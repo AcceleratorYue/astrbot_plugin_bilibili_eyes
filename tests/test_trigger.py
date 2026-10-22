@@ -1,0 +1,231 @@
+"""触发/命令/注入/等待隔离的离线测试（不依赖网络与 LLM）。"""
+
+from __future__ import annotations
+
+import asyncio
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+PLUGIN_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PLUGIN_DIR))
+
+import main as plugin_main  # noqa: E402
+
+
+class FakeEvent:
+    def __init__(self, text: str):
+        self.message_str = text
+        self.unified_msg_origin = "test:GroupMessage:1"
+        self.is_at_or_wake_command = True
+        self._stopped = False
+        self.results = []
+        self.sent = []
+        self.extras = {}
+        self.call_llm = False
+
+    def should_call_llm(self, value):
+        self.call_llm = value
+
+    def get_group_id(self):
+        return "1"
+
+    def get_sender_id(self):
+        return "10001"
+
+    def stop_event(self):
+        self._stopped = True
+
+    def plain_result(self, text):
+        self.results.append(text)
+        return text
+
+    def set_extra(self, key, value):
+        self.extras[key] = value
+
+    def get_extra(self, key, default=None):
+        return self.extras.get(key, default)
+
+    async def send(self, chain):
+        self.sent.append(chain)
+
+    def sent_text(self) -> str:
+        texts = []
+        for chain in self.sent:
+            for comp in getattr(chain, "chain", []):
+                text = getattr(comp, "text", "")
+                if text:
+                    texts.append(text)
+        return "".join(texts)
+
+
+def make_plugin():
+    plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+    plugin._config = {**plugin_main.DEFAULT_OPTIONS, "cache_enabled": False}
+    plugin._active = {}
+    plugin._wait_at = {}
+    plugin._cooldown = {}
+    plugin._quota = {}
+    plugin._semaphore = asyncio.Semaphore(1)
+    plugin._cache = None
+    plugin._session_materials = {}
+    plugin._pending = {}
+    return plugin
+
+
+async def run() -> int:
+    # 1) /看主页 命令只登记任务，不 stop、不直接产出消息
+    plugin = make_plugin()
+    event = FakeEvent("看主页 2431982")
+    async for _ in plugin.cmd_up(event):
+        pass
+    pending = plugin._pending.get(event.unified_msg_origin, {})
+    assert pending.get("kind") == "up" and pending.get("query") == "2431982", pending
+    assert event._stopped is False and not event.results
+    print("✅ /看主页 命令登记 pending")
+
+    # 1b) UID 输入宽容
+    for raw in (
+        "看主页 uid:2431982",
+        "看主页 uid：2431982",
+        "看主页 UID:2431982",
+        "看主页 UID： 2431982",
+        "看主页 uid 2431982",
+        "看主页 uid2431982",
+    ):
+        p = make_plugin()
+        e = FakeEvent(raw)
+        async for _ in p.cmd_up(e):
+            pass
+        pending = p._pending.get(e.unified_msg_origin, {})
+        assert pending.get("query") == "2431982", (raw, pending)
+    print("✅ /看主页 UID 前缀/冒号/空格/大小写宽容")
+
+    # 2) on_llm_request 注入 + 开始提示（ack）
+    async def fake_prepare(event, pending, job):
+        return "<up_profile>\nfake-up\n</up_profile>"
+
+    plugin._prepare_up = fake_prepare
+    req = SimpleNamespace(prompt="用户：看看这个 UP")
+    await plugin.on_llm_request(event, req)
+    assert "<up_profile>" in req.prompt and "用户：看看这个 UP" in req.prompt
+    assert not plugin._pending and not plugin._active
+    assert event._stopped is False
+    assert "我去翻一下这个 UP 的主页" in event.sent_text(), event.sent_text()
+    print("✅ on_llm_request 注入 + ack，且不 stop")
+
+    # 3) 自然语言视频触发
+    plugin2 = make_plugin()
+    event2 = FakeEvent("看看这个视频 BV1AHnB6NEhM")
+    await plugin2.on_message(event2)
+    pending = plugin2._pending.get(event2.unified_msg_origin, {})
+    assert pending.get("kind") == "video" and pending.get("ref") == "BV1AHnB6NEhM", pending
+    assert event2._stopped is False
+    print("✅ 自然语言视频触发登记 pending")
+
+    # 4) 指令消息不会被自然语言分支重复登记
+    plugin3 = make_plugin()
+    event3 = FakeEvent("看主页 2431982")
+    await plugin3.on_message(event3)
+    assert not plugin3._pending
+    print("✅ 指令消息不被自然语言分支重复登记")
+
+    # 4b) UP 主不再支持自然语言触发
+    plugin3b = make_plugin()
+    for text in ("这个 up 主叫啥名字", "看看这个 UP 的主页", "space.bilibili.com/2431982"):
+        event3b = FakeEvent(text)
+        await plugin3b.on_message(event3b)
+        assert not plugin3b._pending, text
+    print("✅ UP 主自然语言触发已移除（仅限 /看主页）")
+
+    # 5) 无活跃任务时不发/不拦等待提示
+    plugin4 = make_plugin()
+    event4 = FakeEvent("在吗")
+    await plugin4.on_waiting(event4)
+    assert not event4.sent and not event4._stopped
+    print("✅ 无活跃任务时不提示")
+
+    # 6) 有活跃任务时，系统核心指令（/stop、/stats 等白名单）放行
+    event5 = FakeEvent("stop")
+    plugin4._active[event5.unified_msg_origin] = plugin_main.Job(
+        started=0, stage="查UP主页", up=True
+    )
+    plugin4._wait_at.clear()
+    await plugin4.on_waiting(event5)
+    assert not event5.sent and not event5._stopped, "核心指令不能被等待提示拦截"
+    event_stats = FakeEvent("stats")
+    await plugin4.on_waiting(event_stats)
+    assert not event_stats.sent and not event_stats._stopped
+    print("✅ /stop、/stats 等核心指令放行")
+
+    # 7) 有活跃任务时，普通聊天也要拦截并提示（避免并发）
+    event6 = FakeEvent("你好呀")
+    plugin4._active[event6.unified_msg_origin] = plugin_main.Job(
+        started=0, stage="取信息"
+    )
+    plugin4._wait_at.clear()
+    await plugin4.on_waiting(event6)
+    assert event6._stopped and "还在看呢" in event6.sent_text(), event6.sent_text()
+    print("✅ 普通聊天被拦截并提示")
+
+    # 8) 非核心指令（例如 /看视频）同样拦截并提示
+    event7 = FakeEvent("看视频 BV1AHnB6NEhM")
+    plugin4._active[event7.unified_msg_origin] = plugin_main.Job(
+        started=0, stage="查UP主页", up=True
+    )
+    plugin4._wait_at.clear()
+    await plugin4.on_waiting(event7)
+    assert event7._stopped and "还在看呢" in event7.sent_text(), event7.sent_text()
+    print("✅ 非核心指令被拦截并提示")
+
+    # 9) 冷却期内只拦截不重复提示
+    event8 = FakeEvent("再问一句")
+    plugin4._active[event8.unified_msg_origin] = plugin_main.Job(
+        started=0, stage="取信息"
+    )
+    sent_before = len(event8.sent)
+    await plugin4.on_waiting(event8)
+    assert event8._stopped and len(event8.sent) == sent_before
+    print("✅ 冷却期内只拦截不刷屏")
+
+    # 10) /bili状态：未配置 / 有效 / 失效
+    class FakeClient:
+        def __init__(self, status):
+            self.status = status
+
+        def check_login(self):
+            return self.status
+
+    plugin5 = make_plugin()
+    event9 = FakeEvent("bili状态")
+    await plugin5.cmd_bili_status(event9)
+    assert "未配置 SESSDATA" in event9.sent_text()
+    assert event9._stopped is True
+
+    plugin5._config["sessdata"] = "fake"
+    plugin5._client = lambda: FakeClient(
+        plugin_main.bc.LoginStatus(is_login=True, uid=123, uname="测试UP")
+    )
+    event10 = FakeEvent("bili状态")
+    await plugin5.cmd_bili_status(event10)
+    assert "有效" in event10.sent_text() and "123" in event10.sent_text()
+
+    plugin5._client = lambda: FakeClient(
+        plugin_main.bc.LoginStatus(is_login=False, message="账号未登录")
+    )
+    event11 = FakeEvent("bili状态")
+    await plugin5.cmd_bili_status(event11)
+    assert "无效" in event11.sent_text()
+    print("✅ /bili状态 未配置/有效/失效三种情况（直接发送）")
+
+    source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
+    assert "asyncio.to_thread(" not in source, "不应再使用默认线程池"
+    assert "ThreadPoolExecutor" in source and "def _run(" in source
+    assert "bilibili_up" not in source, "UP 工具应移除，只保留 /看主页 指令"
+    assert "必须原样说出 UP 主名字" in source
+    print("✅ 阻塞调用全部走插件独立线程池；UP 仅指令")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(run()))
