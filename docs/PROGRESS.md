@@ -92,7 +92,7 @@
 3. ✅ UP 近期投稿记录来源日志（official/fallback/none）；第三方兜底默认保留。
 4. ✅ SESSDATA 未配置时，开始提示每会话提醒一次。
 
-### 下一轮：P1（Phase 2 收尾）
+### 下一轮：P1（Phase 2 收尾，详见 `docs/ROADMAP.md`）
 
 1. `bilibili_frame(bvid, 时间点)`：返回单帧 `ImageContent`，带路径安全校验。
 2. `bilibili_ask(bvid, 问题)`：基于会话缓存材料回答，限制短答案。
