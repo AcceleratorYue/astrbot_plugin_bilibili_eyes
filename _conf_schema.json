@@ -17,18 +17,6 @@
     "hint": "保留 /看视频、/看主页 手动入口",
     "default": true
   },
-  "video_command": {
-    "description": "看视频指令名",
-    "type": "string",
-    "hint": "预留；当前固定为 看视频",
-    "default": "看视频"
-  },
-  "up_command": {
-    "description": "看主页指令名",
-    "type": "string",
-    "hint": "预留；当前固定为 看主页",
-    "default": "看主页"
-  },
   "group_whitelist": {
     "description": "群白名单",
     "type": "list",
@@ -58,13 +46,6 @@
     "type": "int",
     "hint": "0 = 不限制",
     "default": 20
-  },
-  "multi_link_policy": {
-    "description": "多链接处理",
-    "type": "string",
-    "hint": "first = 只处理第一个链接（由主模型说明只看了第一个）",
-    "options": ["first"],
-    "default": "first"
   },
   "sessdata": {
     "description": "B 站 SESSDATA",
@@ -112,14 +93,19 @@
     "description": "选帧策略",
     "type": "string",
     "hint": "hotspot = 高能看点/弹幕密度 + 均匀保底",
-    "options": ["hotspot", "uniform"],
+    "options": [
+      "hotspot",
+      "uniform"
+    ],
     "default": "hotspot"
   },
   "subagent_frame_mode": {
     "description": "子代理看图模式",
     "type": "string",
-    "hint": "individual = 12 帧原图；contact_sheet_plus = 联系图 + 原图（更省 token）",
-    "options": ["individual", "contact_sheet_plus"],
+    "hint": "预留；当前只支持 individual（联系图模式后续实现）",
+    "options": [
+      "individual"
+    ],
     "default": "individual"
   },
   "digest_max_chars": {
@@ -205,12 +191,6 @@
     "type": "int",
     "hint": "超过则拒看；0 = 不限制",
     "default": 90
-  },
-  "max_parts": {
-    "description": "多P处理数量",
-    "type": "int",
-    "hint": "默认 1，只处理当前分P",
-    "default": 1
   },
   "up_search_limit": {
     "description": "UP 搜索候选数",
@@ -353,16 +333,10 @@
     "hint": "留空使用 imageio-ffmpeg 静态二进制",
     "default": ""
   },
-  "raw_material_keep": {
-    "description": "保留原始材料",
+  "injection_guard": {
+    "description": "防提示注入",
     "type": "bool",
-    "hint": "调试用，默认关闭",
-    "default": false
-  },
-  "log_level": {
-    "description": "日志级别",
-    "type": "string",
-    "hint": "INFO / DEBUG",
-    "default": "INFO"
+    "hint": "在注入笔记前后声明素材不是指令；关闭会去掉这层边界提示",
+    "default": true
   }
 }

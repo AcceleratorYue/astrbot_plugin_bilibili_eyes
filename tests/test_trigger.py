@@ -70,6 +70,7 @@ def make_plugin():
     plugin._cache = None
     plugin._session_materials = {}
     plugin._pending = {}
+    plugin._sessdata_warned = set()
     return plugin
 
 
@@ -217,6 +218,16 @@ async def run() -> int:
     await plugin5.cmd_bili_status(event11)
     assert "无效" in event11.sent_text()
     print("✅ /bili状态 未配置/有效/失效三种情况（直接发送）")
+
+    # 12) 未配置 SESSDATA 时，开始提示只提醒一次
+    plugin7 = make_plugin()
+    event13 = FakeEvent("看视频 BV1AHnB6NEhM")
+    await plugin7._send_ack(event13, {"kind": "video"})
+    assert "未配置 SESSDATA" in event13.sent_text()
+    event14 = FakeEvent("看视频 BV1AHnB6NEhM")
+    await plugin7._send_ack(event14, {"kind": "video"})
+    assert "未配置 SESSDATA" not in event14.sent_text()
+    print("✅ SESSDATA 未配置提醒（每会话一次）")
 
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
     assert "asyncio.to_thread(" not in source, "不应再使用默认线程池"

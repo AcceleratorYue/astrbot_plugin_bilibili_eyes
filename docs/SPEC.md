@@ -75,16 +75,12 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | 配置 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `enabled` | bool | true | 总开关 |
-| `nl_trigger_enabled` | bool | true | 自然语言触发（视频+UP）；false 时仅指令 |
-| `command_enabled` | bool | true | 指令入口 |
-| `video_command` | string | `看视频` | 视频指令 |
-| `up_command` | string | `看主页` | UP 指令 |
-| `up_nl_keywords` | — | ~~已移除（v0.2.1）~~ | UP 自然语言触发取消，UP 仅 `/看主页` |
+| `nl_trigger_enabled` | bool | true | 视频自然语言触发；false 时仅指令（UP 只有指令） |
+| `command_enabled` | bool | true | 指令入口（指令名固定为 看视频 / 看主页） |
 | `group_whitelist` | list | `[]` | 仅这些群生效 |
 | `group_blacklist` | list | `[]` | 排除这些群 |
 | `cooldown_seconds` | int | 60 | 同群冷却 |
 | `user_daily_quota` | int | 20 | 每用户每日次数 |
-| `multi_link_policy` | string | `first` | 多链接只处理第一个 |
 
 ### 5.2 视觉与子代理
 
@@ -92,9 +88,9 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | --- | --- | --- | --- |
 | `vision_provider_id` | string | 空 | 空=跟随主模型；无视觉能力则不抽帧 |
 | `frame_count` | int | 12 | 子代理观看帧数（4~16） |
-| `frame_source` | string | `hotspot` | hotspot/uniform/scene/combo |
+| `frame_source` | string | `hotspot` | hotspot=热点+均匀保底；uniform=纯均匀 |
 | `frame_height` | int | 480 | 截帧高度 |
-| `subagent_frame_mode` | string | `individual` | individual / contact_sheet_plus |
+| `subagent_frame_mode` | string | `individual` | 预留；当前只支持 individual（联系图待实现） |
 | `digest_max_chars` | int | 1500 | 笔记上限 |
 | `subagent_timeout` | int | 180 | 子代理超时 |
 | `subagent_retries` | int | 1 | 失败重试 |
@@ -146,8 +142,6 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | `injection_guard` | bool | true | 素材边界防注入 |
 | `max_frame_mb` | int | 3 | 单帧大小 |
 | `ffmpeg_path` | string | 空 | 空=imageio-ffmpeg |
-| `raw_material_keep` | bool | false | 调试保留 |
-| `log_level` | string | `INFO` | 日志 |
 
 ## 6. 关键流程
 
@@ -195,7 +189,7 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | 阶段 | 交付 | 状态 |
 | --- | --- | --- |
 | Phase 0 | 验证脚本：① deepseek-flash 视觉 + 12 帧的耗时/token/质量；② B 站取流+截帧；③ 字幕/评论/弹幕/WBI 直连 | ✅ 完成，见 `phase0/REPORT.md` |
-| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.2.6，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
+| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.2.7，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
 | Phase 2 | 视觉闭环（F5~F7 + 追问/附图） | 🟡 F5 完成；F6/F7 大部分完成；`bilibili_ask`/`bilibili_frame`/联系图待做 |
 | Phase 3 | 工程化（F11~F17 + 单测） | 🟡 缓存/错误/等待/单测已有；配置清理、single-flight、CI 待做 |
 | Phase 4 | 文档/配置/安装/上架 | 🟡 README/CHANGELOG/SPEC 已更新；插件市场发布待做 |
@@ -248,7 +242,7 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 - 指令名暂固定为「看视频 / 看主页」（`video_command`/`up_command` 仅预留，AstrBot 装饰器静态注册）；
 - 真实 AstrBot 消息管线已实机发现并修复「stop_event 跳过 respond」问题（v0.1.1），需继续观察多插件共存行为；
 - UP 用户名歧义处理已实现（多候选交主模型确认），但未用真实重名案例验证；
-- 联系图附图、`subagent_frame_mode`、`frame_source=uniform` 尚未接入；
+- 联系图附图、`subagent_frame_mode=contact_sheet_plus` 尚未接入；
 - 字幕链路需要 SESSDATA 才能完整验证。
 
 ### v0.1.1 修复记录（2026-10-22）
@@ -389,3 +383,16 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 - 官方接口彻底失败时，使用可配置的第三方 API 兜底近期投稿：
   `archive_fallback_enabled`、`archive_fallback_api`；只发送 UID，不带 Cookie。
 - 实测 UID 22425829 也能拿到 5 条近期投稿。
+
+### v0.2.7 P0 收尾（2026-10-22）
+
+- F2：视频信息补发布时间，笔记显示 `发布时间：YYYY-MM-DD HH:MM`。
+- F4：`include_pinned_comment` 接入，B 站 `top_replies` 置顶评论进入笔记并标「UP置顶」。
+- 配置漂移清理：
+  - `frame_source` 接入（hotspot / uniform）；
+  - 新增 `injection_guard` 并接入提示词边界；
+  - 移除未使用的 `video_command`、`up_command`、`multi_link_policy`、`max_parts`、
+    `raw_material_keep`、`log_level`；
+  - `subagent_frame_mode` 标为预留，仅支持 individual。
+- P0-3：UP 主页日志记录近期投稿来源（official/fallback/none）与数量。
+- P0-4：未配置 SESSDATA 时，开始提示每会话提醒一次。

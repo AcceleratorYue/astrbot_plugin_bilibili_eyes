@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.7 (2026-10-22)
+
+P0 收尾：配置漂移清理、补发布时间/置顶评论、UP 来源日志、SESSDATA 未配置提醒。
+
+- **配置清理**：
+  - `frame_source` 已接入（`hotspot` / `uniform`）；
+  - `include_pinned_comment` 已接入（B 站 `top_replies` 置顶评论进入笔记）；
+  - 新增 `injection_guard` 并接入提示词边界；
+  - 移除未使用的 `video_command`、`up_command`、`multi_link_policy`、`max_parts`、
+    `raw_material_keep`、`log_level`；
+  - `subagent_frame_mode` 标为预留（当前只支持 individual）。
+- **F2**：视频信息补 `pubdate`，笔记里显示发布时间。
+- **F4**：置顶评论纳入热评列表并在笔记里标「UP置顶」。
+- **P0-3**：UP 主页日志记录近期投稿来源（official/fallback/none）与数量。
+- **P0-4**：未配置 SESSDATA 时，`/看视频`、`/看主页` 的开始提示会提醒一次（每会话）。
+- 测试覆盖发布时间、置顶评论、injection_guard、SESSDATA 提醒。
+- 版本号同步到 0.2.7。
+
 ## 0.2.6 (2026-10-22)
 
 修复 `space/wbi/arc/search` 即使 SESSDATA 有效也随机 412、近期投稿为空的问题。

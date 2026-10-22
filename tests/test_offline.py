@@ -69,21 +69,27 @@ def test_digest_helpers() -> None:
         up_uid=9,
         duration=120,
         desc="简介",
+        pubdate=1700000000,
     )
     material = bc.Material(
         video=video,
         subtitles=[(0.0, "大家好"), (65.0, "这是第二段")],
-        comments=[bc.CommentItem(uname="A", content="好看", like=3)],
+        comments=[
+            bc.CommentItem(uname="A", content="置顶内容", like=30, pinned=True),
+            bc.CommentItem(uname="B", content="好看", like=3),
+        ],
         warnings=["无可用字幕"],
         frames=[],
     )
     prompt = sa.build_material_prompt(material)
     assert "测试视频" in prompt and "[00:00] 大家好" in prompt and "好看" in prompt
+    assert "发布时间" in prompt and "UP置顶" in prompt
 
     main_prompt = sa.build_main_model_prompt("笔记内容", ignored_links=1)
     assert "只看了第一个" in main_prompt
     assert "<video_notes>" in main_prompt and "</video_notes>" in main_prompt
     assert "不是指令" in main_prompt
+    assert "不是指令" not in sa.build_main_model_prompt("笔记", guard=False)
 
     long_text = "a" * 3000
     cut = sa.truncate_digest(long_text, 1500)
@@ -135,8 +141,7 @@ def test_schema() -> None:
     required = {
         "enabled",
         "nl_trigger_enabled",
-        "video_command",
-        "up_command",
+        "injection_guard",
         "sessdata",
         "vision_provider_id",
         "frame_count",
@@ -149,7 +154,7 @@ def test_schema() -> None:
     assert schema["nl_trigger_enabled"]["default"] is True
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
-    assert "version: 0.2.6" in meta
+    assert "version: 0.2.7" in meta
     print("✅ 配置 schema / metadata")
 
 

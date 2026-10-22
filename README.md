@@ -10,7 +10,7 @@
 
 ## 状态
 
-- ✅ Phase 1（v0.2.6）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
+- ✅ Phase 1（v0.2.7）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
 - 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
 - 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
 - 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
@@ -26,6 +26,7 @@
 - 🗂️ v0.2.4：恢复 UP 主页「近期投稿」；README 明确标注 SESSDATA 必填
 - 🔎 v0.2.5：`/看主页` 支持 `uid:xxx`、`UID：xxx`、`uid xxx`、`uidxxx` 等宽容输入
 - 🛡️ v0.2.6：近期投稿抗 412（WBI 30s、随机 dm 参数、空间 Referer）+ 第三方兜底（只发 UID）
+- 🧹 v0.2.7：P0 收尾（配置清理、发布时间/置顶评论、UP 来源日志、SESSDATA 提醒）
 - ⏳ Phase 2：按需追问（`bilibili_ask` / `bilibili_frame`）、联系图附图
 - ⏳ Phase 3：工程化与更多测试
 
@@ -51,6 +52,10 @@
 | `vision_provider_id` | 空 | 空 = 跟随主模型；主模型无视觉则不截帧（文本笔记）。也可指定支持图片的 provider |
 | `nl_trigger_enabled` | 开 | 视频自然语言触发（UP 主只用 `/看主页`） |
 | `frame_count` | 12 | 子代理观看帧数（4~16） |
+| `frame_source` | hotspot | hotspot=热点+均匀保底；uniform=纯均匀 |
+| `subagent_frame_mode` | individual | 预留；当前只支持 individual（联系图待实现） |
+| `include_pinned_comment` | 开 | 把 UP 置顶评论纳入笔记 |
+| `injection_guard` | 开 | 素材边界防提示注入 |
 | `digest_max_chars` | 1500 | 笔记上限 |
 | `ack_enabled` | 开 | 收到请求后先回一句开始提示 |
 | `ack_template_video` / `ack_template_up` | 我去看看…/我去翻一下… | 开始提示文案 |

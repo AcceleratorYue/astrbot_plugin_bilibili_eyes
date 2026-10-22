@@ -91,6 +91,7 @@ class VideoInfo:
     up_uid: int
     duration: int
     desc: str
+    pubdate: int = 0
 
 
 @dataclass
@@ -99,6 +100,7 @@ class CommentItem:
     content: str
     like: int
     replies: list[str] = field(default_factory=list)
+    pinned: bool = False
 
 
 @dataclass
@@ -110,6 +112,7 @@ class UpInfo:
     fans: int
     archives: list[str]
     archive_count: int = 0
+    archive_source: str = "official"
 
 
 # B 站空间接口的风控参数；仿照 yt-dlp 每次随机生成，固定值反而更容易 412
@@ -242,6 +245,7 @@ class BiliClient:
             up_uid=int((data.get("owner") or {}).get("mid") or 0),
             duration=int(page_data.get("duration") or data.get("duration") or 0),
             desc=str(data.get("desc") or ""),
+            pubdate=int(data.get("pubdate") or 0),
         )
         return video
 
@@ -298,36 +302,51 @@ class BiliClient:
     # -- 评论 -----------------------------------------------------------
 
     def get_comments(
-        self, aid: int, limit: int = 12, reply_limit: int = 3, filter_ads: bool = True
+        self,
+        aid: int,
+        limit: int = 12,
+        reply_limit: int = 3,
+        filter_ads: bool = True,
+        include_pinned: bool = True,
     ) -> list[CommentItem]:
         url = self._api(
             f"/x/v2/reply?type=1&oid={aid}&pn=1&ps={max(1, min(limit, 20))}&sort=2"
         )
         data = self._check(self.http.get_json(url, timeout=self.timeout), "评论")
-        replies = data.get("replies") or []
         result: list[CommentItem] = []
-        for item in replies:
-            content = (item.get("content") or {}).get("message") or ""
-            content = str(content).strip()
-            if not content:
-                continue
+        seen: set[str] = set()
+
+        def add(item: dict, pinned: bool = False) -> None:
+            content = str((item.get("content") or {}).get("message") or "").strip()
+            if not content or content in seen:
+                return
             if filter_ads and _looks_like_ad(content):
-                continue
-            like = int(item.get("like") or 0)
+                return
             sub = []
             for child in (item.get("replies") or [])[:reply_limit]:
-                child_content = (child.get("content") or {}).get("message") or ""
-                child_content = str(child_content).strip()
+                child_content = str(
+                    (child.get("content") or {}).get("message") or ""
+                ).strip()
                 if child_content:
                     sub.append(child_content[:200])
+            seen.add(content)
             result.append(
                 CommentItem(
                     uname=str((item.get("member") or {}).get("uname") or ""),
                     content=content[:500],
-                    like=like,
+                    like=int(item.get("like") or 0),
                     replies=sub,
+                    pinned=pinned,
                 )
             )
+
+        if include_pinned:
+            for item in data.get("top_replies") or []:
+                add(item, pinned=True)
+                if len(result) >= limit:
+                    break
+        for item in data.get("replies") or []:
+            add(item)
             if len(result) >= limit:
                 break
         return result
@@ -589,10 +608,12 @@ class BiliClient:
                 archives.clear()
                 if attempt < 2:
                     time.sleep(0.6 if attempt == 0 else 1.5)
+        archive_source = "official" if archives else "none"
         if not archives:
             fallback_titles, fallback_total = self._fallback_archives(uid)
             if fallback_titles:
                 archives = fallback_titles
+                archive_source = "fallback"
                 if fallback_total and not archive_count:
                     archive_count = fallback_total
         if not name:
@@ -605,6 +626,7 @@ class BiliClient:
             fans=fans,
             archives=archives,
             archive_count=archive_count,
+            archive_source=archive_source,
         )
 
     def search_up(self, keyword: str, limit: int = 5, exact: bool = True) -> list[UpInfo]:
