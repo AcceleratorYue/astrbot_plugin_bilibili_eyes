@@ -92,6 +92,13 @@ class VideoInfo:
     duration: int
     desc: str
     pubdate: int = 0
+    views: int = 0
+    danmaku: int = 0
+    replies: int = 0
+    likes: int = 0
+    coins: int = 0
+    favorites: int = 0
+    shares: int = 0
 
 
 @dataclass
@@ -234,6 +241,7 @@ class BiliClient:
         page_count = len(pages) or 1
         index = min(max(1, page or 1), page_count)
         page_data = pages[index - 1] if pages else data
+        stat = data.get("stat") or {}
         video = VideoInfo(
             bvid=str(data.get("bvid") or ref),
             aid=int(data.get("aid") or 0),
@@ -246,6 +254,13 @@ class BiliClient:
             duration=int(page_data.get("duration") or data.get("duration") or 0),
             desc=str(data.get("desc") or ""),
             pubdate=int(data.get("pubdate") or 0),
+            views=int(stat.get("view") or 0),
+            danmaku=int(stat.get("danmaku") or 0),
+            replies=int(stat.get("reply") or 0),
+            likes=int(stat.get("like") or 0),
+            coins=int(stat.get("coin") or 0),
+            favorites=int(stat.get("favorite") or 0),
+            shares=int(stat.get("share") or 0),
         )
         return video
 

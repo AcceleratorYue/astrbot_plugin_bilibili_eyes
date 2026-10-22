@@ -44,7 +44,7 @@ FOLLOWUP_RE = re.compile(
     r"发布时间|投稿|UP主|up主|主页|看了什么|讲了什么)"
 )
 FOLLOWUP_TTL_SECONDS = 30 * 60
-CACHE_VERSION = "2"
+CACHE_VERSION = "3"
 
 DEFAULT_OPTIONS: dict = {
     "enabled": True,
@@ -148,7 +148,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.2.9 已加载")
+        logger.info(f"{LOG} 插件 v0.2.10 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -903,6 +903,7 @@ class BilibiliEyesPlugin(Star):
             f"视频：{video.title}",
             f"UP：{video.up_name}（uid {video.up_uid}）",
             f"时长：{video.duration}s",
+            sa.format_video_stats(video),
             f"简介：{video.desc[:500]}",
         ]
         if material.subtitles:

@@ -48,6 +48,22 @@ def _fmt_time(seconds: float) -> str:
     return f"{minutes:02d}:{sec:02d}"
 
 
+def _fmt_count(value: int) -> str:
+    number = max(0, int(value or 0))
+    if number >= 10000:
+        return f"{number / 10000:.1f}万"
+    return str(number)
+
+
+def format_video_stats(video: Any) -> str:
+    return (
+        f"播放数据：播放 {_fmt_count(video.views)} | 弹幕 {_fmt_count(video.danmaku)} | "
+        f"评论 {_fmt_count(video.replies)} | 点赞 {_fmt_count(video.likes)} | "
+        f"投币 {_fmt_count(video.coins)} | 收藏 {_fmt_count(video.favorites)} | "
+        f"转发 {_fmt_count(video.shares)}"
+    )
+
+
 def _fmt_pubdate(timestamp: int) -> str:
     if not timestamp:
         return "未知"
@@ -108,6 +124,7 @@ def build_material_prompt(
         f"UP：{video.up_name}（uid {video.up_uid}）",
         f"分P：{video.page}/{video.page_count} | 时长：{_fmt_time(video.duration)}",
         f"发布时间：{_fmt_pubdate(video.pubdate)}",
+        format_video_stats(video),
         f"简介：{normalize_quotes(video.desc[:800]) or '（无）'}",
     ]
     if ignored_links > 0:
@@ -150,7 +167,7 @@ def build_material_prompt(
         parts.append(f"用户的具体问题：{question}")
     parts.append(
         "请按以下结构输出：\n"
-        "1) 客观信息（已给，可简写）\n"
+        "1) 客观信息（标题/UP/时长/发布时间/播放数据，已给可简写）\n"
         "2) 一句话主旨（只陈述内容）\n"
         "3) 时间轴关键节点（时间 + 发生了什么 + 证据）\n"
         "4) 关键画面观察（只写画面可见内容）\n"
