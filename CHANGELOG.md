@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0 (2026-10-23)
+
+P1：Phase 2 收尾（材料缓存 / 截图工具 / 追问工具 / 联系图）。
+
+- **P1-1 会话材料缓存（F12）**：
+  - 新增内存 `MaterialStore`，按会话保存 `Material`（帧、时间点、字幕、评论、视频信息）与摘要；
+  - TTL 30 分钟，最多 20 个会话，过期/超限自动清理；不写磁盘。
+- **P1-2 `bilibili_frame`**：
+  - 参数：时间点（秒 / `mm:ss` / `hh:mm:ss`），可选 bvid；
+  - 优先复用已截的最近帧，否则按时间点用 ffmpeg 截一张；
+  - 返回 `CallToolResult`（TextContent + ImageContent），路径必须在插件数据目录内。
+- **P1-3 `bilibili_ask`**：
+  - 基于会话材料回答追问，不重新抓 B 站；
+  - 使用独立 ask 提示词，输出短答案；材料过期时提示先重新看视频。
+- **P1-4 联系图**：
+  - `subagent_frame_mode=contact_sheet_plus` 时，12 帧拼成一张联系图，降低视觉 token；
+  - 默认仍为 individual。
+- 工具列表更新为 `bilibili_watch` / `bilibili_ask` / `bilibili_frame`；关闭自然语言触发时一并注销。
+- 新增测试：材料缓存 LRU/删除、ask 提示词、frame 返回 ImageContent。
+- 版本号同步到 0.3.0。
+
 ## 0.2.10 (2026-10-23)
 
 补上原方案漏掉的视频播放数据。

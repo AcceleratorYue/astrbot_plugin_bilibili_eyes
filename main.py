@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import functools
 import re
 import sys
@@ -31,11 +32,11 @@ from astrbot.core.message.message_event_result import MessageChain
 
 import eyes_client as bc
 import eyes_subagent as sa
-from eyes_cache import NoteCache
+from eyes_cache import MaterialStore, NoteCache
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_eyes"
 LOG = "[B站眼睛]"
-TOOL_NAMES = ("bilibili_watch",)
+TOOL_NAMES = ("bilibili_watch", "bilibili_ask", "bilibili_frame")
 MAX_CONTEXT_CHARS = 1200
 
 
@@ -145,10 +146,11 @@ class BilibiliEyesPlugin(Star):
             thread_name_prefix="bili-eyes",
         )
         self._cache: NoteCache | None = None
+        self._materials = MaterialStore(FOLLOWUP_TTL_SECONDS, 20)
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.2.10 已加载")
+        logger.info(f"{LOG} 插件 v0.3.0 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -689,6 +691,7 @@ class BilibiliEyesPlugin(Star):
                 digest = await self._digest(material, event)
             if not digest:
                 return "这次没看成（可能网络/风控/无视觉），请稍后再试。"
+            self._materials.put(umo, material, digest)
             self._session_materials[umo] = {
                 "kind": "video",
                 "digest": digest,
@@ -715,6 +718,141 @@ class BilibiliEyesPlugin(Star):
         finally:
             self._active.pop(umo, None)
 
+    @filter.llm_tool(name="bilibili_ask")
+    async def tool_ask(self, event: AstrMessageEvent, question: str, bvid: str = ""):
+        """追问最近看过的 B 站视频，基于当时的字幕/评论/画面回答，不重新抓取。
+
+        Args:
+            question(string): 用户要追问的问题
+            bvid(string): 可选；不填则使用当前会话最近看过的视频
+        """
+
+        from mcp.types import CallToolResult, TextContent
+
+        def text_result(text: str):
+            return CallToolResult(content=[TextContent(type="text", text=text)])
+
+        if not self._bool_opt("enabled"):
+            return text_result("B站观看功能未启用。")
+        question = str(question or "").strip()
+        if not question:
+            return text_result("请提供要追问的问题。")
+        hit = self._materials.get(event.unified_msg_origin)
+        if not hit:
+            return text_result("最近没有看过的视频；请先让我看一个视频再追问。")
+        material, _digest = hit
+        if bvid:
+            refs = bc.extract_video_refs(str(bvid))
+            want = refs[0].upper() if refs else str(bvid).strip().upper()
+            if want and want not in material.video.bvid.upper():
+                return text_result(
+                    f"最近看的是 {material.video.bvid}，不是 {want}；请先看目标视频。"
+                )
+        provider_id, visual = self._vision(event)
+        if not provider_id:
+            return text_result("当前没有可用的模型 provider，无法回答追问。")
+        try:
+            answer = await sa.run_ask(
+                self.context,
+                provider_id,
+                material,
+                question,
+                max_chars=600,
+                timeout=min(90, self._int_opt("subagent_timeout", 180)),
+                visual=visual,
+            )
+        except Exception as exc:
+            logger.warning(f"{LOG} 追问失败：{exc}")
+            return text_result("这次没答上来（可能超时/风控），稍后再试。")
+        if not answer.strip():
+            return text_result("这次没答上来，稍后再试。")
+        return text_result(answer)
+
+    @filter.llm_tool(name="bilibili_frame")
+    async def tool_frame(self, event: AstrMessageEvent, time_point: str, bvid: str = ""):
+        """查看最近看过视频的某一帧画面；用户明确要截图/看某时间点时使用。
+
+        Args:
+            time_point(string): 时间点，秒数或 mm:ss / hh:mm:ss
+            bvid(string): 可选；不填则使用当前会话最近看过的视频
+        """
+
+        from mcp.types import CallToolResult, ImageContent, TextContent
+
+        def text_result(text: str):
+            return CallToolResult(content=[TextContent(type="text", text=text)])
+
+        if not self._bool_opt("enabled"):
+            return text_result("B站观看功能未启用。")
+        hit = self._materials.get(event.unified_msg_origin)
+        if not hit:
+            return text_result("最近没有看过的视频；请先让我看一个视频再截图。")
+        material, _digest = hit
+        if bvid:
+            refs = bc.extract_video_refs(str(bvid))
+            want = refs[0].upper() if refs else str(bvid).strip().upper()
+            if want and want not in material.video.bvid.upper():
+                return text_result(
+                    f"最近看的是 {material.video.bvid}，不是 {want}；请先看目标视频。"
+                )
+        target = bc.parse_time_point(time_point)
+        if target is None:
+            return text_result("时间点格式不对，请用秒数、mm:ss 或 hh:mm:ss。")
+        if material.video.duration and target > material.video.duration:
+            return text_result(
+                f"这个视频只有 {material.video.duration} 秒，没有 {time_point} 这个时间点。"
+            )
+        path = None
+        frames = list(zip(material.frames, material.frame_times))
+        if frames:
+            nearest, nearest_time = min(
+                frames, key=lambda item: abs(item[1] - target)
+            )
+            if abs(nearest_time - target) <= 8:
+                path = nearest
+        if path is None:
+            client = self._client()
+            try:
+                stream, _height = await self._run(
+                    client.get_playurl, material.video.bvid, material.video.cid
+                )
+                out_dir = self._data_dir() / "frames" / material.video.bvid
+                pairs = await self._run(
+                    client.extract_frames,
+                    stream,
+                    [target],
+                    out_dir,
+                    self._int_opt("frame_height", 480),
+                    float(self._int_opt("max_frame_mb", 3)),
+                )
+            except Exception as exc:
+                logger.warning(f"{LOG} 截帧失败：{exc}")
+                return text_result("这次没截到图（可能网络/风控），稍后再试。")
+            if not pairs:
+                return text_result("这个时间点没有截到画面，稍后再试。")
+            path, actual = pairs[0]
+            material.frames.append(path)
+            material.frame_times.append(actual)
+        try:
+            data_path = Path(path).resolve()
+            root = self._data_dir().resolve()
+            if not data_path.is_relative_to(root):
+                return text_result("帧路径不合法。")
+            payload = base64.b64encode(data_path.read_bytes()).decode("ascii")
+        except Exception as exc:
+            logger.warning(f"{LOG} 读取帧失败：{exc}")
+            return text_result("读取截图失败，稍后再试。")
+        mime = "image/png" if data_path.suffix.lower() == ".png" else "image/jpeg"
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=f"这是 {material.video.bvid} 在 {time_point} 附近的画面。",
+                ),
+                ImageContent(type="image", data=payload, mimeType=mime),
+            ]
+        )
+
     # -- 观看流程 -----------------------------------------------------
 
     async def _prepare_video(self, event, pending: dict, job: Job) -> str:
@@ -725,6 +863,9 @@ class BilibiliEyesPlugin(Star):
         material = await self._collect(job, ref, pending.get("page"))
         digest = await self._digest(material, event)
         job.stage = "整理内容"
+        self._materials.put(
+            event.unified_msg_origin, material, digest or ""
+        )
         self._session_materials[event.unified_msg_origin] = {
             "kind": "video",
             "digest": digest or "",
@@ -886,6 +1027,54 @@ class BilibiliEyesPlugin(Star):
         )
         material.frames = [path for path, _seconds in pairs]
         material.frame_times = [seconds for _path, seconds in pairs]
+        if (
+            str(self._opt("subagent_frame_mode") or "individual")
+            == "contact_sheet_plus"
+            and material.frames
+        ):
+            sheet = await self._run(
+                self._make_contact_sheet, list(material.frames), out_dir
+            )
+            if sheet:
+                material.frames = [sheet]
+                material.frame_times = [-1.0]
+                material.warnings.append("联系图模式：12 帧拼成一张图")
+
+    def _make_contact_sheet(self, frames: list[Path], out_dir: Path) -> Path | None:
+        """把多帧拼成一张联系图；失败时返回 None，继续用原图。"""
+
+        try:
+            from PIL import Image, ImageDraw
+
+            if not frames:
+                return None
+            columns = 4
+            thumb_w, thumb_h = 320, 180
+            rows = (len(frames) + columns - 1) // columns
+            canvas = Image.new(
+                "RGB", (columns * thumb_w, rows * thumb_h), (18, 18, 18)
+            )
+            draw = ImageDraw.Draw(canvas)
+            for index, frame in enumerate(frames[:12]):
+                try:
+                    image = Image.open(frame).convert("RGB")
+                except Exception:
+                    continue
+                image.thumbnail((thumb_w - 8, thumb_h - 8))
+                x = (index % columns) * thumb_w + (thumb_w - image.width) // 2
+                y = (index // columns) * thumb_h + (thumb_h - image.height) // 2
+                canvas.paste(image, (x, y))
+                draw.text(
+                    ((index % columns) * thumb_w + 6, (index // columns) * thumb_h + 4),
+                    str(index + 1),
+                    fill=(255, 230, 80),
+                )
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / "contact_sheet.jpg"
+            canvas.save(out_path, quality=85)
+            return out_path
+        except Exception:
+            return None
 
     def _data_dir(self) -> Path:
         try:

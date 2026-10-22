@@ -10,7 +10,7 @@
 
 ## 状态
 
-- ✅ Phase 1（v0.2.10）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
+- ✅ Phase 1（v0.3.0）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
 - 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
 - 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
 - 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
@@ -30,7 +30,7 @@
 - 🗣️ v0.2.8：主模型不再暴露「笔记/子代理」来源，像刚看完视频一样直接回答
 - 💬 v0.2.9：30 分钟内追问自动带上当时的摘要（含置顶评论原文），不用重新看
 - 📊 v0.2.10：补播放量/弹幕/评论/点赞/投币/收藏/转发数据
-- ⏳ Phase 2：按需追问（`bilibili_ask` / `bilibili_frame`）、联系图附图
+- ✅ Phase 2（v0.3.0）：会话材料缓存 30 分钟、`bilibili_ask` 追问、`bilibili_frame` 截图、联系图模式
 - ⏳ Phase 3：工程化与更多测试
 
 ## 触发方式
@@ -39,13 +39,14 @@
 | --- | --- |
 | 自然语言 | 仅支持视频：@bot 且消息含 B 站视频链接即触发；**UP 主不支持自然语言** |
 | 指令 | `/看视频 <链接/BV>`、`/看主页 <UID/链接/用户名>`、`/bili状态`（检查 SESSDATA 与当前 UID） |
-| 工具 | 主模型可调用 `bilibili_watch`（视频）；UP 仅限 `/看主页` 指令 |
+| 工具 | `bilibili_watch`（看视频）、`bilibili_ask`（追问）、`bilibili_frame`（截图）；UP 仅限 `/看主页` 指令 |
 
 `/看主页` 的 UID 支持宽容输入：`2431982`、`uid:2431982`、`uid：2431982`、
 `UID:2431982`、`uid 2431982`、`uid2431982` 都可以，大小写和全/半角冒号不影响。
 
 看完视频后 30 分钟内可以直接追问（例如「置顶评论是啥」「什么时候发布的」），
-插件会自动复用当时的摘要，不需要重新看一遍。
+插件会自动复用当时的摘要，不需要重新看一遍。需要具体画面时，主模型可调用
+`bilibili_frame` 返回某一帧；追问由 `bilibili_ask` 基于会话材料回答，不会重新抓 B 站。
 | 开关 | `nl_trigger_enabled=false` 时只保留指令（需重载插件） |
 
 ## 配置要点
@@ -59,7 +60,7 @@
 | `nl_trigger_enabled` | 开 | 视频自然语言触发（UP 主只用 `/看主页`） |
 | `frame_count` | 12 | 子代理观看帧数（4~16） |
 | `frame_source` | hotspot | hotspot=热点+均匀保底；uniform=纯均匀 |
-| `subagent_frame_mode` | individual | 预留；当前只支持 individual（联系图待实现） |
+| `subagent_frame_mode` | individual | individual=12 帧原图；contact_sheet_plus=1 张联系图（省 token） |
 | `include_pinned_comment` | 开 | 把 UP 置顶评论纳入笔记 |
 | `injection_guard` | 开 | 素材边界防提示注入 |
 | `digest_max_chars` | 1500 | 笔记上限 |

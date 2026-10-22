@@ -102,9 +102,10 @@
   "subagent_frame_mode": {
     "description": "子代理看图模式",
     "type": "string",
-    "hint": "预留；当前只支持 individual（联系图模式后续实现）",
+    "hint": "individual = 12 张原图；contact_sheet_plus = 1 张联系图（更省 token）",
     "options": [
-      "individual"
+      "individual",
+      "contact_sheet_plus"
     ],
     "default": "individual"
   },

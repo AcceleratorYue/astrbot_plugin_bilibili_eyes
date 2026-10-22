@@ -79,6 +79,30 @@ def normalize_up_query(text: str) -> str:
     return value
 
 
+def parse_time_point(value: str | int | float) -> float | None:
+    """解析时间点：30 / "30" / "00:30" / "1:02:03"；非法返回 None。"""
+
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        if ":" not in text:
+            seconds = float(text)
+        else:
+            parts = [part.strip() for part in text.split(":")]
+            if not 2 <= len(parts) <= 3:
+                return None
+            numbers = [float(part) for part in parts]
+            seconds = 0.0
+            for number in numbers:
+                seconds = seconds * 60 + number
+        if seconds < 0 or seconds != seconds:
+            return None
+        return round(seconds, 2)
+    except Exception:
+        return None
+
+
 @dataclass
 class VideoInfo:
     bvid: str

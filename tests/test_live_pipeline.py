@@ -142,6 +142,7 @@ async def main() -> int:
         max_workers=2, thread_name_prefix="bili-test"
     )
     plugin._cache = None
+    plugin._materials = plugin_main.MaterialStore(1800, 20)
     plugin._session_materials = {}
     plugin._pending = {}
     plugin._sessdata_warned = set()

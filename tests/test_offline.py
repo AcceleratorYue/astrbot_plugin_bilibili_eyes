@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 HERE = Path(__file__).resolve()
 PLUGIN_DIR = HERE.parents[1]
@@ -41,7 +43,11 @@ def test_parse_refs() -> None:
     ):
         assert bc.normalize_up_query(raw) == "123", raw
     assert bc.normalize_up_query("numbの木头") == "numbの木头"
-    print("✅ 链接/分P/空间/UID 宽容解析")
+    assert bc.parse_time_point("30") == 30
+    assert bc.parse_time_point("00:30") == 30
+    assert bc.parse_time_point("1:02:03") == 3723
+    assert bc.parse_time_point("abc") is None
+    print("✅ 链接/分P/空间/UID/时间点解析")
 
 
 def test_frame_selection() -> None:
@@ -145,6 +151,99 @@ def test_note_cache() -> None:
     print("✅ 笔记缓存：读写 / LRU / TTL")
 
 
+def test_material_store() -> None:
+    store = eyes_cache.MaterialStore(ttl_seconds=1800, max_entries=2)
+    material = object()
+    store.put("session-a", material, "摘要 A")
+    hit = store.get("session-a")
+    assert hit == (material, "摘要 A")
+    store.drop("session-a")
+    assert store.get("session-a") is None
+    store.put("a", object(), "A")
+    store.put("b", object(), "B")
+    store.put("c", object(), "C")
+    assert store.get("a") is None
+    assert store.get("b") is not None and store.get("c") is not None
+    store.put("old", object(), "旧")
+    created, old_material, old_digest = store._items["old"]
+    store._items["old"] = (created - 1801, old_material, old_digest)
+    assert store.get("old") is None
+    print("✅ 会话材料缓存：读写 / LRU / TTL / 删除")
+
+
+def test_ask_prompt() -> None:
+    class FakeContext:
+        async def llm_generate(self, **kwargs):
+            self.kwargs = kwargs
+            return SimpleNamespace(completion_text="答案")
+
+    video = bc.VideoInfo(
+        bvid="BV1ask",
+        aid=1,
+        cid=2,
+        page=1,
+        page_count=1,
+        title="测试",
+        up_name="UP",
+        up_uid=1,
+        duration=100,
+        desc="",
+    )
+    material = bc.Material(video=video)
+    context = FakeContext()
+    answer = asyncio.run(
+        sa.run_ask(context, "provider", material, "第 30 秒发生了什么", visual=False)
+    )
+    assert answer == "答案"
+    prompt = context.kwargs.get("prompt") or ""
+    assert "请按以下结构" not in prompt
+    assert "直接回答用户的问题" in prompt
+    assert context.kwargs.get("system_prompt") == sa.ASK_SYSTEM_PROMPT
+    print("✅ 追问子代理：ask 提示词与短答案")
+
+
+def test_frame_tool() -> None:
+    import main as plugin_main
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        frame = tmp / "frame.jpg"
+        from PIL import Image
+
+        Image.new("RGB", (64, 48), (30, 60, 90)).save(frame)
+        video = bc.VideoInfo(
+            bvid="BV1frame",
+            aid=1,
+            cid=2,
+            page=1,
+            page_count=1,
+            title="测试",
+            up_name="UP",
+            up_uid=1,
+            duration=100,
+            desc="",
+        )
+        material = bc.Material(video=video, frames=[frame], frame_times=[30.0])
+        plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+        plugin._config = {**plugin_main.DEFAULT_OPTIONS}
+        plugin._materials = eyes_cache.MaterialStore()
+        plugin._materials.put("s:1", material, "摘要")
+        plugin._data_dir = lambda: tmp
+
+        class FakeEvent:
+            unified_msg_origin = "s:1"
+
+        result = asyncio.run(plugin.tool_frame(FakeEvent(), "00:30"))
+        kinds = [type(item).__name__ for item in result.content]
+        assert kinds == ["TextContent", "ImageContent"], kinds
+        assert result.content[1].data
+        print("✅ bilibili_frame：时间点→单帧 ImageContent")
+    finally:
+        import shutil
+
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_schema() -> None:
     schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
     required = {
@@ -163,7 +262,7 @@ def test_schema() -> None:
     assert schema["nl_trigger_enabled"]["default"] is True
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
-    assert "version: 0.2.10" in meta
+    assert "version: 0.3.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -203,7 +302,10 @@ def main() -> int:
     test_frame_selection()
     test_digest_helpers()
     test_note_cache()
+    test_material_store()
     test_archive_fallback()
+    test_ask_prompt()
+    test_frame_tool()
     test_schema()
     print("\n全部离线测试通过")
     return 0

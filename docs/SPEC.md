@@ -36,7 +36,7 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | F6 | 热点选帧（弹幕密度 XML + `view_points` + 字幕高信息段 + 均匀保底，共 12 帧） |
 | F7 | 截帧（480P，ffmpeg）与联系图（按需附图用） |
 | F8 | 子代理观影笔记（客观、≤1500 字、带证据/不确定项、无价值判断） |
-| F9 | 主模型工具：`bilibili_watch`（`bilibili_up` 已于 v0.2.1 移除，UP 仅指令） |
+| F9 | 主模型工具：`bilibili_watch` / `bilibili_ask` / `bilibili_frame`（`bilibili_up` 已于 v0.2.1 移除，UP 仅指令） |
 | F10 | 多链接说明、UP 用户名歧义处理 |
 | F11 | 笔记缓存（BV+P+材料版本，TTL 7 天，LRU 500） |
 | F12 | 原始材料仅会话内临时保留 30 分钟（供追问） |
@@ -90,7 +90,7 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | `frame_count` | int | 12 | 子代理观看帧数（4~16） |
 | `frame_source` | string | `hotspot` | hotspot=热点+均匀保底；uniform=纯均匀 |
 | `frame_height` | int | 480 | 截帧高度 |
-| `subagent_frame_mode` | string | `individual` | 预留；当前只支持 individual（联系图待实现） |
+| `subagent_frame_mode` | string | `individual` | individual / contact_sheet_plus（联系图） |
 | `digest_max_chars` | int | 1500 | 笔记上限 |
 | `subagent_timeout` | int | 180 | 子代理超时 |
 | `subagent_retries` | int | 1 | 失败重试 |
@@ -189,8 +189,8 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | 阶段 | 交付 | 状态 |
 | --- | --- | --- |
 | Phase 0 | 验证脚本：① deepseek-flash 视觉 + 12 帧的耗时/token/质量；② B 站取流+截帧；③ 字幕/评论/弹幕/WBI 直连 | ✅ 完成，见 `phase0/REPORT.md` |
-| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.2.10，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
-| Phase 2 | 视觉闭环（F5~F7 + 追问/附图） | 🟡 F5 完成；F6/F7 大部分完成；`bilibili_ask`/`bilibili_frame`/联系图待做 |
+| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.3.0，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
+| Phase 2 | 视觉闭环（F5~F7 + 追问/附图） | ✅ F5/F7/F12 完成；`bilibili_ask`/`bilibili_frame`/联系图已实现；F6 字幕高信息段仍可优化 |
 | Phase 3 | 工程化（F11~F17 + 单测） | 🟡 缓存/错误/等待/单测已有；配置清理、single-flight、CI 待做 |
 | Phase 4 | 文档/配置/安装/上架 | 🟡 README/CHANGELOG/SPEC 已更新；插件市场发布待做 |
 
@@ -423,3 +423,12 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 - 子代理输入和笔记「客观信息」增加播放数据行；兜底摘要也带上。
 - 播放数据使用万为单位显示（如 346.0万），避免大数字难读。
 - 笔记缓存版本升到 v3，旧摘要自动失效。
+
+### v0.3.0 P1 收尾（2026-10-23）
+
+- P1-1：`MaterialStore` 内存缓存 30 分钟，按会话保存材料与摘要。
+- P1-2：`bilibili_frame` 返回单帧 `ImageContent`，支持秒/`mm:ss`/`hh:mm:ss`。
+- P1-3：`bilibili_ask` 基于会话材料回答追问，不重新抓 B 站。
+- P1-4：`subagent_frame_mode=contact_sheet_plus` 联系图模式。
+- 工具：`bilibili_watch` / `bilibili_ask` / `bilibili_frame`。
+- 测试：材料缓存、ask 提示词、frame ImageContent。

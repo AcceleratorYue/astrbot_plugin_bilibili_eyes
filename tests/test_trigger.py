@@ -69,6 +69,7 @@ def make_plugin():
     plugin._quota = {}
     plugin._semaphore = asyncio.Semaphore(1)
     plugin._cache = None
+    plugin._materials = plugin_main.MaterialStore(1800, 20)
     plugin._session_materials = {}
     plugin._pending = {}
     plugin._sessdata_warned = set()
