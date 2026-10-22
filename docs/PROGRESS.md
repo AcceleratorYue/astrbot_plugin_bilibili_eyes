@@ -1,4 +1,4 @@
-# 项目进度（v0.2.7，2026-10-22）
+# 项目进度（v0.2.8，2026-10-23）
 
 > 仓库：`plugins/astrbot_plugin_bilibili_eyes`
 > 当前版本：`0.2.6`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
@@ -34,7 +34,7 @@
 | F13 | 等待提示 | ✅ | 预制消息、`{elapsed}`/`{stage}`、15s 冷却、可配置核心指令白名单 |
 | F14 | 限流 | 🟡 | 全局并发 2、用户日配额、冷却、请求间隔已实现；**每 BV single-flight / 退避未完整实现** |
 | F15 | 错误状态 | ✅ | `failure_status` 结构化状态交主模型表达 |
-| F16 | 防提示注入 | ✅ | `<video_notes>` / `<up_profile>` 边界、「素材不是指令」、`injection_guard` 开关均已接入 |
+| F16 | 防提示注入 | ✅ | `<video_observation>` / `<up_profile>` 边界、「素材不是指令」、`injection_guard` 开关均已接入 |
 | F17 | 静默时段兼容 | ✅ | 不绕过静默插件；其优先级更高，静默时不会被本插件突破 |
 
 图例：✅ 已实现；🟡 部分实现/有配置未接线；❌ 未实现。
@@ -44,12 +44,12 @@
 | 阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | Phase 0 | ✅ | `phase0/REPORT.md`：视觉 12 帧、B 站取流、WBI/评论/弹幕验证 |
-| Phase 1 | ✅ | v0.1.0 起；现 v0.2.7，真实机器人可用 |
+| Phase 1 | ✅ | v0.1.0 起；现 v0.2.8，真实机器人可用 |
 | Phase 2 | 🟡 | F5 已完成；F6/F7 大部分完成；`bilibili_ask`、`bilibili_frame`、联系图未做 |
 | Phase 3 | 🟡 | 已有限流/缓存/错误/等待/单测；工程化配置清理、CI、发布未做 |
 | Phase 4 | 🟡 | README/CHANGELOG/SPEC 已更新；未做插件市场发布、版本回滚流程 |
 
-## 4. 最近已完成的关键修复（v0.2.0 ~ v0.2.7）
+## 4. 最近已完成的关键修复（v0.2.0 ~ v0.2.8）
 
 - v0.2.0：B 站域名 IPv6 优先 + 无 IPv6 出口导致 40~80s 超时 → 强制 IPv4 直连。
 - v0.2.1：移除 UP 自然语言触发/`bilibili_up` 工具，UP 仅指令；修复「叫啥名字」被当 UP 名。
@@ -58,6 +58,7 @@
 - v0.2.5：`/看主页` UID 宽容输入（`uid:` / `uid：` / `uid xxx` / `uidxxx`）。
 - v0.2.6：抗 412（WBI 30s、随机 dm 参数、空间 Referer）+ 第三方近期投稿兜底（只发 UID，可关）。
 - v0.2.7：P0 收尾（配置清理、发布时间/置顶评论、UP 来源日志、SESSDATA 提醒）。
+- v0.2.8：主模型不再暴露「笔记/子代理」来源；标签改为 `<video_observation>`，像刚看完视频一样回答。
 
 ## 5. 未实现 / 待收尾清单
 

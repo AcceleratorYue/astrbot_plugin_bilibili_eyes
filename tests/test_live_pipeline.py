@@ -165,7 +165,7 @@ async def main() -> int:
         (PLUGIN_DIR / "_live_prompt.txt").write_text(prompt, encoding="utf-8")
         print("\n完整提示词已写入 _live_prompt.txt")
     plugin._executor.shutdown(wait=False, cancel_futures=True)
-    return 0 if "video_notes" in prompt else 1
+    return 0 if "video_observation" in prompt else 1
 
 
 if __name__ == "__main__":

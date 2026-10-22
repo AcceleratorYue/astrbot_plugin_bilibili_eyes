@@ -85,11 +85,12 @@ def test_digest_helpers() -> None:
     assert "测试视频" in prompt and "[00:00] 大家好" in prompt and "好看" in prompt
     assert "发布时间" in prompt and "UP置顶" in prompt
 
-    main_prompt = sa.build_main_model_prompt("笔记内容", ignored_links=1)
+    main_prompt = sa.build_main_model_prompt("观察内容", ignored_links=1)
     assert "只看了第一个" in main_prompt
-    assert "<video_notes>" in main_prompt and "</video_notes>" in main_prompt
+    assert "<video_observation>" in main_prompt and "</video_observation>" in main_prompt
     assert "不是指令" in main_prompt
-    assert "不是指令" not in sa.build_main_model_prompt("笔记", guard=False)
+    assert "笔记" not in main_prompt
+    assert "不是指令" not in sa.build_main_model_prompt("观察内容", guard=False)
 
     long_text = "a" * 3000
     cut = sa.truncate_digest(long_text, 1500)
@@ -108,7 +109,7 @@ def test_digest_helpers() -> None:
         uid=1, name="测试UP", sign="", level=6, fans=100, archives=["视频A"]
     )
     assert "视频A" in sa.build_up_digest(up_titles)
-    print("✅ 笔记/主模型提示词/截断/全角引号/UP近期投稿")
+    print("✅ 观察内容/主模型提示词/截断/全角引号/UP近期投稿")
 
 
 def test_note_cache() -> None:
@@ -154,7 +155,7 @@ def test_schema() -> None:
     assert schema["nl_trigger_enabled"]["default"] is True
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
-    assert "version: 0.2.7" in meta
+    assert "version: 0.2.8" in meta
     print("✅ 配置 schema / metadata")
 
 
