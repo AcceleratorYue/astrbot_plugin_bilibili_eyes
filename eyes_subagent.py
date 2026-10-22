@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import textwrap
 from typing import Any
 
@@ -237,17 +238,45 @@ def build_main_model_prompt(
     return "\n".join(lines)
 
 
-def truncate_digest(text: str, limit: int = 1500) -> str:
+COMMENT_HEADING_RE = re.compile(
+    r"(?m)^\s*#{0,6}\s*(?:5|五)\s*[\)）.、:：]\s*观众观点"
+)
+
+
+def _truncate_plain(text: str, limit: int) -> str:
     text = (text or "").strip()
     if len(text) <= limit:
         return text
     cut = text[:limit]
-    # 尽量在段落/句号处截断
     for marker in ("\n\n", "\n", "。", "；"):
         index = cut.rfind(marker)
         if index >= limit * 0.6:
             return cut[: index + len(marker)].rstrip()
     return cut.rstrip() + "…"
+
+
+def truncate_digest(text: str, limit: int = 1500) -> str:
+    """截断长笔记，但优先保留「观众观点 / 不确定项」，避免评论被时间轴挤掉。"""
+
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    match = COMMENT_HEADING_RE.search(text)
+    start = match.start() if match else text.find("观众观点")
+    if start > 0:
+        tail = text[start:].strip()
+        marker = "\n\n……（时间轴过长已折叠，以下保留观众观点/不确定项）……\n\n"
+        max_tail = max(260, int(limit * 0.55))
+        if len(tail) > max_tail:
+            tail = _truncate_plain(tail, max_tail)
+        room = limit - len(tail) - len(marker)
+        if room < 120:
+            tail = _truncate_plain(tail, max(220, limit - 160))
+            room = limit - len(tail) - len(marker)
+        head = _truncate_plain(text[:start].rstrip(), max(80, room))
+        result = head + marker + tail
+        return result[: limit + 1]
+    return _truncate_plain(text, limit)
 
 
 def failure_status(reason: str) -> str:

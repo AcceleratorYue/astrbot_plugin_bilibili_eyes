@@ -1,7 +1,7 @@
-# 项目进度（v0.3.0，2026-10-23）
+# 项目进度（v0.3.1，2026-10-23）
 
 > 仓库：`plugins/astrbot_plugin_bilibili_eyes`
-> 当前版本：`0.3.0`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
+> 当前版本：`0.3.1`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
 > SPEC：`docs/SPEC.md`；变更记录：`CHANGELOG.md`
 
 ## 1. 一句话状态
@@ -44,7 +44,7 @@
 | 阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | Phase 0 | ✅ | `phase0/REPORT.md`：视觉 12 帧、B 站取流、WBI/评论/弹幕验证 |
-| Phase 1 | ✅ | v0.1.0 起；现 v0.3.0，真实机器人可用 |
+| Phase 1 | ✅ | v0.1.0 起；现 v0.3.1，真实机器人可用 |
 | Phase 2 | ✅ | F5/F7/F12 完成；`bilibili_ask`、`bilibili_frame`、联系图已实现；F6 仍可优化 |
 | Phase 3 | 🟡 | 已有限流/缓存/错误/等待/单测；工程化配置清理、CI、发布未做 |
 | Phase 4 | 🟡 | README/CHANGELOG/SPEC 已更新；未做插件市场发布、版本回滚流程 |
@@ -62,6 +62,7 @@
 - v0.2.9：30 分钟内追问自动再次注入摘要，置顶评论保留原文；缓存版本升 v2。
 - v0.2.10：视频播放数据（播放/弹幕/评论/点赞/投币/收藏/转发）进入笔记；缓存 v3。
 - v0.3.0：P1 完成（材料缓存、bilibili_frame、bilibili_ask、联系图）。
+- v0.3.1：长视频笔记按段落截断，优先保留评论/置顶/不确定项；缓存 v4。
 
 ## 5. 未实现 / 待收尾清单
 

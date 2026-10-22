@@ -110,6 +110,16 @@ def test_digest_helpers() -> None:
     cut = sa.truncate_digest(long_text, 1500)
     assert len(cut) <= 1501
 
+    long_with_comments = (
+        "### 1) 客观信息\n"
+        + ("时间轴内容" * 200)
+        + "\n### 5) 观众观点\n- UP置顶原文：Steam 预购链接\n- 评论 A\n"
+        + "\n### 6) 不确定项\n- 无"
+    )
+    cut = sa.truncate_digest(long_with_comments, 300)
+    assert "观众观点" in cut and "UP置顶原文" in cut
+    assert "时间轴过长已折叠" in cut
+
     quoted = '他说"你好"，又问"在吗"'
     assert sa.normalize_quotes(quoted) == "他说“你好”，又问“在吗”"
     assert '"' not in sa.normalize_quotes(quoted)
@@ -262,7 +272,7 @@ def test_schema() -> None:
     assert schema["nl_trigger_enabled"]["default"] is True
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
-    assert "version: 0.3.0" in meta
+    assert "version: 0.3.1" in meta
     print("✅ 配置 schema / metadata")
 
 

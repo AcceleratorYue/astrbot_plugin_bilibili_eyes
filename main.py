@@ -45,7 +45,7 @@ FOLLOWUP_RE = re.compile(
     r"发布时间|投稿|UP主|up主|主页|看了什么|讲了什么)"
 )
 FOLLOWUP_TTL_SECONDS = 30 * 60
-CACHE_VERSION = "3"
+CACHE_VERSION = "4"
 
 DEFAULT_OPTIONS: dict = {
     "enabled": True,
@@ -150,7 +150,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.3.0 已加载")
+        logger.info(f"{LOG} 插件 v0.3.1 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
