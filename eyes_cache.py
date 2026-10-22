@@ -8,14 +8,22 @@ from pathlib import Path
 
 
 class NoteCache:
-    def __init__(self, directory: Path, ttl_hours: int = 168, max_entries: int = 500):
+    def __init__(
+        self,
+        directory: Path,
+        ttl_hours: int = 168,
+        max_entries: int = 500,
+        version: str = "",
+    ):
         self.directory = Path(directory)
         self.ttl_seconds = max(1, int(ttl_hours)) * 3600
         self.max_entries = max(1, int(max_entries))
+        self.version = str(version or "")
         self.directory.mkdir(parents=True, exist_ok=True)
 
     def _path(self, bvid: str, page: int) -> Path:
-        return self.directory / f"{bvid}_p{int(page)}.json"
+        suffix = f"_v{self.version}" if self.version else ""
+        return self.directory / f"{bvid}_p{int(page)}{suffix}.json"
 
     def get(self, bvid: str, page: int) -> str | None:
         path = self._path(bvid, page)

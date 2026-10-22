@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -114,6 +115,26 @@ async def run() -> int:
     assert event._stopped is False
     assert "我去翻一下这个 UP 的主页" in event.sent_text(), event.sent_text()
     print("✅ on_llm_request 注入 + ack，且不 stop")
+
+    # 2b) 30 分钟内的追问会再次注入摘要
+    plugin_follow = make_plugin()
+    event_follow = FakeEvent("刚刚那个视频的置顶评论是啥？")
+    plugin_follow._session_materials[event_follow.unified_msg_origin] = {
+        "kind": "video",
+        "digest": "摘要：这是一个游戏预告",
+        "bvid": "BV1AHnB6NEhM",
+        "pinned": ["一键直达 Steam 预购：https://b23.tv/example"],
+        "created": time.time(),
+    }
+    follow_req = SimpleNamespace(prompt="用户：刚刚那个视频的置顶评论是啥？")
+    await plugin_follow.on_llm_request(event_follow, follow_req)
+    assert "一键直达 Steam 预购" in follow_req.prompt
+    assert "<video_observation>" in follow_req.prompt
+    unrelated = FakeEvent("今天晚饭吃什么")
+    unrelated_req = SimpleNamespace(prompt="用户：今天晚饭吃什么")
+    await plugin_follow.on_llm_request(unrelated, unrelated_req)
+    assert "一键直达 Steam 预购" not in unrelated_req.prompt
+    print("✅ 追问注入（30 分钟内）且不污染无关消息")
 
     # 3) 自然语言视频触发
     plugin2 = make_plugin()

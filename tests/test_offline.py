@@ -155,7 +155,7 @@ def test_schema() -> None:
     assert schema["nl_trigger_enabled"]["default"] is True
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
-    assert "version: 0.2.8" in meta
+    assert "version: 0.2.9" in meta
     print("✅ 配置 schema / metadata")
 
 

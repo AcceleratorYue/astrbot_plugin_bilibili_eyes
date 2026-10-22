@@ -144,6 +144,7 @@ async def main() -> int:
     plugin._cache = None
     plugin._session_materials = {}
     plugin._pending = {}
+    plugin._sessdata_warned = set()
     plugin.context = FakeContext()
     event = FakeEvent(f"@bot 看看这个视频 https://www.bilibili.com/video/{bvid}")
     plugin._pending[event.unified_msg_origin] = {
