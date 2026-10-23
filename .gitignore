@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.log
+_live_prompt.txt
+_test_cache/
+data/
+phase0/out/
+.venv/
