@@ -1,7 +1,7 @@
-# 项目进度（v0.4.0，2026-10-23）
+# 项目进度（v0.4.1，2026-10-23）
 
 > 仓库：`plugins/astrbot_plugin_bilibili_eyes`
-> 当前版本：`0.4.0`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
+> 当前版本：`0.4.1`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
 > SPEC：`docs/SPEC.md`；变更记录：`CHANGELOG.md`
 
 ## 1. 一句话状态
@@ -24,7 +24,7 @@
 | F3 | 字幕 | 🟡 | CC/AI 字幕、无字幕降级已实现；**音频转录仅配置项，无接口桩** |
 | F4 | 评论 | ✅ | 热评 12 + 二级 3 + 置顶评论 + 广告过滤 |
 | F5 | UP 主页 | ✅ | 昵称/签名/等级/粉丝/近期投稿；UID/链接/用户名；近期投稿有第三方兜底 |
-| F6 | 热点选帧 | 🟡 | `view_points` + 弹幕密度 + 均匀保底；`frame_source` 已支持 hotspot/uniform；**字幕高信息段未接入** |
+| F6 | 热点选帧 | ✅ | `view_points` + 弹幕密度 + 字幕高信息段 + 均匀保底；`frame_source` 支持 hotspot/uniform |
 | F7 | 截帧与联系图 | ✅ | 12 帧 ffmpeg 截取 + contact_sheet_plus 联系图模式 |
 | F8 | 子代理笔记 | ✅ | 隔离 `llm_generate`，客观笔记、全角引号、≤1500 字 |
 | F9 | 主模型工具 | ✅ | `bilibili_watch` / `bilibili_ask` / `bilibili_frame`；UP 仅指令 |
@@ -44,7 +44,7 @@
 | 阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | Phase 0 | ✅ | `phase0/REPORT.md`：视觉 12 帧、B 站取流、WBI/评论/弹幕验证 |
-| Phase 1 | ✅ | v0.1.0 起；现 v0.4.0，真实机器人可用 |
+| Phase 1 | ✅ | v0.1.0 起；现 v0.4.1，真实机器人可用 |
 | Phase 2 | ✅ | F5/F7/F12 完成；`bilibili_ask`、`bilibili_frame`、联系图已实现；F6 仍可优化 |
 | Phase 3 | 🟡 | 已有限流/缓存/错误/等待/单测；工程化配置清理、CI、发布未做 |
 | Phase 4 | 🟡 | README/CHANGELOG/SPEC 已更新；未做插件市场发布、版本回滚流程 |
@@ -67,6 +67,7 @@
 - v0.3.3：QQ 小程序卡片自动转链（@bot 卡片 / `/看视频` 卡片）。
 - v0.3.4：支持「引用卡片 + @bot」，卡片在 Reply.chain 里也能转链。
 - v0.4.0：P2 工程化（single-flight、412 退避、HTTP mock、发布检查表）。
+- v0.4.1：P2-5 可选增强（字幕选帧、联系图时间标注、音频桩）。
 
 ## 5. 未实现 / 待收尾清单
 

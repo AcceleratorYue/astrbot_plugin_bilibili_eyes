@@ -13,6 +13,7 @@ HERE = Path(__file__).resolve()
 PLUGIN_DIR = HERE.parents[1]
 sys.path.insert(0, str(PLUGIN_DIR))
 
+import eyes_audio  # noqa: E402
 import eyes_cache  # noqa: E402
 import eyes_card  # noqa: E402
 import eyes_client as bc  # noqa: E402
@@ -117,7 +118,15 @@ def test_frame_selection() -> None:
     assert timestamps == sorted(timestamps)
     for a, b in zip(timestamps, timestamps[1:]):
         assert b - a >= 3
-    print("✅ 选帧：去重 / 间距 / 数量", timestamps)
+    with_subtitles = client.select_timestamps(
+        100,
+        view_points=[],
+        danmaku_peaks=[],
+        count=5,
+        subtitles=[(42.0, "这是一段包含关键信息的字幕内容")],
+    )
+    assert 42.0 in with_subtitles, with_subtitles
+    print("✅ 选帧：去重 / 间距 / 数量 / 字幕高信息段", timestamps)
 
 
 def test_digest_helpers() -> None:
@@ -371,6 +380,19 @@ def test_frame_tool() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_audio_stub() -> None:
+    async def call() -> None:
+        await eyes_audio.AudioTranscriber().transcribe(Path("x.mp3"))
+
+    try:
+        asyncio.run(call())
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError("音频接口桩应抛 NotImplementedError")
+    print("✅ 音频转录接口桩")
+
+
 def test_schema() -> None:
     schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
     required = {
@@ -392,7 +414,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.4.0" in meta
+    assert "version: 0.4.1" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -439,6 +461,7 @@ def main() -> int:
     test_http_mock_parsing()
     test_backoff_retry()
     test_frame_tool()
+    test_audio_stub()
     test_schema()
     print("\n全部离线测试通过")
     return 0

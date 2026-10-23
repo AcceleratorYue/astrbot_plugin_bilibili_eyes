@@ -21,7 +21,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 # AstrBot 热重载通常只重新 import main，子模块会留在 sys.modules 里，
 # 导致代码更新后仍跑到旧的 eyes_client/eyes_subagent。这里先清掉再导入。
-for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card"):
+for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio"):
     sys.modules.pop(_module_name, None)
 
 from astrbot.api import logger
@@ -156,7 +156,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.4.0 已加载")
+        logger.info(f"{LOG} 插件 v0.4.1 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -980,6 +980,8 @@ class BilibiliEyesPlugin(Star):
         if max_minutes > 0 and video.duration > max_minutes * 60:
             raise bc.BiliError("too_long", f"视频时长 {video.duration}s")
         material = bc.Material(video=video)
+        if self._bool_opt("audio_transcription_enabled"):
+            material.warnings.append("音频转录接口未实现（仅保留桩）")
         if not self._bool_opt("include_description"):
             material.video.desc = ""
         if self._cache is not None:
@@ -1097,6 +1099,7 @@ class BilibiliEyesPlugin(Star):
                 material.view_points,
                 material.danmaku_peaks,
                 count,
+                material.subtitles,
             )
         out_dir = self._data_dir() / "frames" / material.video.bvid
         pairs = await self._run(
@@ -1115,14 +1118,19 @@ class BilibiliEyesPlugin(Star):
             and material.frames
         ):
             sheet = await self._run(
-                self._make_contact_sheet, list(material.frames), out_dir
+                self._make_contact_sheet,
+                list(material.frames),
+                out_dir,
+                list(material.frame_times),
             )
             if sheet:
                 material.frames = [sheet]
                 material.frame_times = [-1.0]
                 material.warnings.append("联系图模式：12 帧拼成一张图")
 
-    def _make_contact_sheet(self, frames: list[Path], out_dir: Path) -> Path | None:
+    def _make_contact_sheet(
+        self, frames: list[Path], out_dir: Path, frame_times: list[float] | None = None
+    ) -> Path | None:
         """把多帧拼成一张联系图；失败时返回 None，继续用原图。"""
 
         try:
@@ -1146,9 +1154,12 @@ class BilibiliEyesPlugin(Star):
                 x = (index % columns) * thumb_w + (thumb_w - image.width) // 2
                 y = (index // columns) * thumb_h + (thumb_h - image.height) // 2
                 canvas.paste(image, (x, y))
+                label = str(index + 1)
+                if frame_times and index < len(frame_times):
+                    label = f"{label} {sa._fmt_time(frame_times[index])}"
                 draw.text(
                     ((index % columns) * thumb_w + 6, (index // columns) * thumb_h + 4),
-                    str(index + 1),
+                    label,
                     fill=(255, 230, 80),
                 )
             out_dir.mkdir(parents=True, exist_ok=True)

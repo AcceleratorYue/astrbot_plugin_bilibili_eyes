@@ -461,10 +461,22 @@ class BiliClient:
         view_points: list[float],
         danmaku_peaks: list[float],
         count: int,
+        subtitles: list[tuple[float, str]] | None = None,
     ) -> list[float]:
         candidates: list[float] = []
         candidates.extend(view_points)
         candidates.extend(danmaku_peaks)
+        # 字幕高信息段：优先选择字数多/带问号的句子
+        subtitle_candidates: list[tuple[int, float]] = []
+        for timestamp, text in subtitles or []:
+            plain = re.sub(r"\s+", "", str(text or ""))
+            if len(plain) < 6:
+                continue
+            score = len(plain) + (4 if any(ch in plain for ch in "？?！!") else 0)
+            subtitle_candidates.append((score, float(timestamp)))
+        subtitle_candidates.sort(reverse=True)
+        for _score, timestamp in subtitle_candidates[: max(2, count // 3)]:
+            candidates.append(timestamp)
         # 均匀保底
         for index in range(count):
             candidates.append(
