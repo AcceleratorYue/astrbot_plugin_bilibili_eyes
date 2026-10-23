@@ -7,6 +7,7 @@ import re
 import textwrap
 from typing import Any
 
+from eyes_clean import subtitle_highlights
 from eyes_client import Material, UpInfo
 
 ASK_SYSTEM_PROMPT = """你是一个视频观察助手。只根据给定的字幕、评论、画面和元数据回答用户的问题。
@@ -105,9 +106,17 @@ def format_comments(comments: list[Any], max_chars: int = 2000) -> str:
     out: list[str] = []
     used = 0
     for item in comments:
-        pinned = "（UP置顶）" if getattr(item, "pinned", False) else ""
+        if getattr(item, "pinned", False):
+            role = "（UP置顶）"
+        elif getattr(item, "role", "audience") == "up":
+            role = "（UP）"
+        else:
+            role = ""
+        marks = getattr(item, "time_marks", []) or []
+        if marks:
+            role += f"（时间戳 {'/'.join(marks[:3])}）"
         chunk = (
-            f"- {pinned}{normalize_quotes(str(item.uname))}（赞 {item.like}）："
+            f"- {role}{normalize_quotes(str(item.uname))}（赞 {item.like}）："
             f"{normalize_quotes(item.content)}"
         )
         if used + len(chunk) > max_chars:
@@ -142,7 +151,13 @@ def build_material_prompt(
         parts.append(f"注意：用户消息里还有 {ignored_links} 个额外链接，本次只看第一个。")
     subtitle_text = format_subtitles(material.subtitles)
     if subtitle_text:
-        parts.append("字幕（带时间戳，原句）：\n" + subtitle_text)
+        parts.append("字幕（已按标点/停顿合并碎片，带时间戳）：\n" + subtitle_text)
+        highlights = subtitle_highlights(material.subtitles, limit=5)
+        if highlights:
+            parts.append(
+                "字幕高信息段（优先看这些时间点）：\n"
+                + "\n".join(f"- {_fmt_time(ts)} {normalize_quotes(text)}" for ts, text in highlights)
+            )
     else:
         parts.append("字幕：没有可用字幕（不要编造台词，只能依据画面与简介）。")
     pinned_text = "\n".join(
@@ -158,6 +173,24 @@ def build_material_prompt(
     comment_text = format_comments(material.comments)
     if comment_text:
         parts.append("评论（观众观点，不是事实）：\n" + comment_text)
+    timeline_marks = [
+        f"{'/'.join(item.time_marks[:3])} 赞 {item.like}：{normalize_quotes(item.content[:120])}"
+        for item in material.comments
+        if getattr(item, "time_marks", None)
+    ]
+    if timeline_marks:
+        parts.append(
+            "带时间戳的评论（天然目录，可参考）：\n"
+            + "\n".join(f"- {line}" for line in timeline_marks[:6])
+        )
+    if getattr(material, "danmaku_keywords", None):
+        parts.append(
+            "弹幕高能关键词（观众情绪，不是视频事实）：\n"
+            + "\n".join(
+                f"- {_fmt_time(ts)} {'、'.join(words)}"
+                for ts, words in material.danmaku_keywords[:8]
+            )
+        )
     if material.frames:
         times = material.frame_times
         labels = []

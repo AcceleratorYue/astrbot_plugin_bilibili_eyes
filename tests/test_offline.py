@@ -15,6 +15,7 @@ sys.path.insert(0, str(PLUGIN_DIR))
 
 import eyes_audio  # noqa: E402
 import eyes_cache  # noqa: E402
+import eyes_clean as ec  # noqa: E402
 import eyes_card  # noqa: E402
 import eyes_client as bc  # noqa: E402
 import eyes_subagent as sa  # noqa: E402
@@ -380,6 +381,68 @@ def test_frame_tool() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_cleaning_and_dedupe() -> None:
+    desc = (
+        "第一行核心介绍\n"
+        "淘宝店铺 https://shop.example.com\n"
+        "BGM：某首曲子\n"
+        "粉丝群 123456789\n"
+        "#标签#\n"
+        "第二行核心内容"
+    )
+    cleaned = ec.clean_description(desc)
+    assert "核心介绍" in cleaned and "第二行核心内容" in cleaned
+    assert "淘宝" not in cleaned and "BGM" not in cleaned and "粉丝群" not in cleaned
+
+    merged = ec.merge_subtitles(
+        [(1.0, "就是就是"), (1.2, "然后那个"), (1.4, "我们开始"), (3.0, "第二句。")]
+    )
+    assert len(merged) >= 1
+    assert "就是" in merged[0][1]
+
+    assert ec.is_low_value_comment("抽奖接龙")
+    assert ec.is_low_value_comment("666666")
+    assert not ec.is_low_value_comment("这一段讲得很有道理")
+    assert ec.extract_time_marks("01:23 开始，05:40 干货") == ["01:23", "05:40"]
+    assert ec.danmaku_keywords(["泪目", "666", "前方高能", "泪目"])[0] == "泪目"
+
+    client = bc.BiliClient(interval=0)
+    xml = '<i><d p="10.0,1,25,16777215">泪目</d><d p="11.0,1,25,16777215">666</d><d p="70.0,1,25,16777215">前方高能</d></i>'.encode("utf-8")
+    client.http.request = lambda *args, **kwargs: xml
+    peaks, keywords = client.get_danmaku_insights(1, 120)
+    assert peaks and keywords
+    assert any("泪目" in text for _ts, text in keywords)
+
+    from PIL import Image
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        paths = []
+        import random
+
+        random.seed(7)
+        base = Image.new("RGB", (64, 64))
+        for x in range(64):
+            for y in range(64):
+                value = random.randrange(256)
+                base.putpixel((x, y), (value, value // 2, 255 - value))
+        for index in range(3):
+            path = tmp / f"f{index}.jpg"
+            if index < 2:
+                image = base.copy()
+            else:
+                image = Image.eval(base, lambda value: 255 - value)
+            image.save(path)
+            paths.append((path, float(index * 10)))
+        kept = ec.dedupe_frames(paths, max_count=3)
+        assert len(kept) == 2, kept
+    finally:
+        import shutil
+
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("✅ 清洗：简介/字幕/评论/弹幕/帧去重")
+
+
 def test_audio_stub() -> None:
     async def call() -> None:
         await eyes_audio.AudioTranscriber().transcribe(Path("x.mp3"))
@@ -414,7 +477,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.4.2" in meta
+    assert "version: 0.5.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -459,6 +522,7 @@ def main() -> int:
     test_archive_fallback()
     test_ask_prompt()
     test_http_mock_parsing()
+    test_cleaning_and_dedupe()
     test_backoff_retry()
     test_frame_tool()
     test_audio_stub()

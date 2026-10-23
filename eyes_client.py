@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import base64
+import html
 import json
 import math
 import random
@@ -18,6 +19,13 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from eyes_clean import (
+    clean_description,
+    danmaku_keywords,
+    extract_time_marks,
+    is_low_value_comment,
+    merge_subtitles,
+)
 from eyes_wbi import UA, BiliHTTP
 
 
@@ -132,6 +140,8 @@ class CommentItem:
     like: int
     replies: list[str] = field(default_factory=list)
     pinned: bool = False
+    role: str = "audience"
+    time_marks: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -183,6 +193,7 @@ class Material:
     subtitles: list[tuple[float, str]] = field(default_factory=list)
     comments: list[CommentItem] = field(default_factory=list)
     danmaku_peaks: list[float] = field(default_factory=list)
+    danmaku_keywords: list[tuple[float, str]] = field(default_factory=list)
     view_points: list[float] = field(default_factory=list)
     frames: list[Path] = field(default_factory=list)
     frame_times: list[float] = field(default_factory=list)
@@ -347,6 +358,7 @@ class BiliClient:
         reply_limit: int = 3,
         filter_ads: bool = True,
         include_pinned: bool = True,
+        up_uid: int = 0,
     ) -> list[CommentItem]:
         url = self._api(
             f"/x/v2/reply?type=1&oid={aid}&pn=1&ps={max(1, min(limit, 20))}&sort=2"
@@ -361,6 +373,10 @@ class BiliClient:
                 return
             if filter_ads and _looks_like_ad(content):
                 return
+            if not pinned and is_low_value_comment(content):
+                return
+            mid = int((item.get("member") or {}).get("mid") or 0)
+            role = "up" if up_uid and mid == int(up_uid) else "audience"
             sub = []
             for child in (item.get("replies") or [])[:reply_limit]:
                 child_content = str(
@@ -376,6 +392,8 @@ class BiliClient:
                     like=int(item.get("like") or 0),
                     replies=sub,
                     pinned=pinned,
+                    role=role,
+                    time_marks=extract_time_marks(content),
                 )
             )
 
@@ -415,6 +433,43 @@ class BiliClient:
             hist[bin_index] = hist.get(bin_index, 0) + 1
         ranked = sorted(hist.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
         return [bin_index * step + step / 2 for bin_index, _ in ranked]
+
+    def get_danmaku_insights(
+        self, cid: int, duration: int, top: int = 8, keyword_limit: int = 6
+    ) -> tuple[list[float], list[tuple[float, str]]]:
+        """返回 (高能时间点, [(时间点, 关键词)])，过滤打卡/666 等刷屏。"""
+
+        try:
+            raw = self.http.request(
+                self._api(f"/x/v1/dm/list.so?oid={cid}"), timeout=self.timeout
+            )
+        except Exception:
+            return [], []
+        text = raw.decode("utf-8", "replace")
+        entries = re.findall(r'<d p="([^"]+)">(.*?)</d>', text, re.S)
+        step = max(1, int(duration or 0) // 60)
+        buckets: dict[int, list[str]] = {}
+        counts: dict[int, int] = {}
+        for param, content in entries:
+            try:
+                timestamp = float(param.split(",")[0])
+            except Exception:
+                continue
+            bin_index = int(timestamp // step)
+            counts[bin_index] = counts.get(bin_index, 0) + 1
+            cleaned = html.unescape(re.sub(r"<[^>]+>", "", content)).strip()
+            if cleaned:
+                buckets.setdefault(bin_index, []).append(cleaned)
+        if not counts:
+            return [], []
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
+        peaks = [bin_index * step + step / 2 for bin_index, _ in ranked]
+        keywords: list[tuple[float, str]] = []
+        for bin_index, _count in ranked:
+            words = danmaku_keywords(buckets.get(bin_index, []), keyword_limit)
+            if words:
+                keywords.append((bin_index * step + step / 2, "、".join(words)))
+        return peaks, keywords
 
     # -- 取流 / 截帧 ----------------------------------------------------
 
@@ -483,8 +538,10 @@ class BiliClient:
                 duration * (0.05 + 0.9 * index / max(1, count - 1))
             )
         chosen: list[float] = []
+        lower = duration * 0.05 if duration else 0
+        upper = duration * 0.95 if duration else 0
         for value in candidates:
-            if value <= 0 or value >= max(1, duration):
+            if value < lower or value > upper:
                 continue
             if all(abs(value - existing) >= 3 for existing in chosen):
                 chosen.append(round(value, 1))
