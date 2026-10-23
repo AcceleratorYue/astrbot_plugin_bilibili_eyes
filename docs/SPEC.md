@@ -191,7 +191,7 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | 阶段 | 交付 | 状态 |
 | --- | --- | --- |
 | Phase 0 | 验证脚本：① deepseek-flash 视觉 + 12 帧的耗时/token/质量；② B 站取流+截帧；③ 字幕/评论/弹幕/WBI 直连 | ✅ 完成，见 `phase0/REPORT.md` |
-| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.4.1，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
+| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.4.2，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
 | Phase 2 | 视觉闭环（F5~F7 + 追问/附图） | ✅ F5/F7/F12 完成；`bilibili_ask`/`bilibili_frame`/联系图已实现；F6 字幕高信息段仍可优化 |
 | Phase 3 | 工程化（F11~F17 + 单测） | 🟡 缓存/错误/等待/单测已有；配置清理、single-flight、CI 待做 |
 | Phase 4 | 文档/配置/安装/上架 | 🟡 README/CHANGELOG/SPEC 已更新；插件市场发布待做 |
@@ -479,3 +479,9 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 - 联系图每格标注编号 + 时间点；
 - F3：新增 `eyes_audio.AudioTranscriber` 接口桩，开启时提示“仅保留桩”；
 - 测试：字幕选帧、音频桩。
+
+### v0.4.2 发布准备（2026-10-23）
+
+- `metadata.yaml` 补齐 `repo`、`social_link`、`support_platforms`、`tags`；
+- 简介覆盖播放数据、卡片转链、追问、截图；
+- 代码无行为变化，供 GitHub 仓库/AstrBot 插件市场发布。
