@@ -143,8 +143,8 @@ python tests/test_live_pipeline.py
 - 备份：`C:\Users\23942\OneDrive\Desktop\QQbot\backups\astrbot_plugin_bilibili_eyes_0.4.1_20261023_200826.zip`
   （含 source / installed / git bundle / MANIFEST；不含 SESSDATA/config）
 - GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-- Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.4.2>
-- Release 附件：`astrbot_plugin_bilibili_eyes-0.4.2.zip`（约 101 KB）
+- 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.5.0>
+- Release 附件：`astrbot_plugin_bilibili_eyes-0.5.0.zip`（约 108 KB）
 - AstrBot Cloud 提交：待登录网页手动提交，步骤见 `docs/PUBLISH.md`。
 
 ## 9. 真实机器人回归（2026-10-23，v0.3.1）
