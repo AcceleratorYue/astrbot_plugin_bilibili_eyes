@@ -1,0 +1,355 @@
+{
+  "enabled": {
+    "description": "启用插件",
+    "type": "bool",
+    "hint": "总开关",
+    "default": true
+  },
+  "nl_trigger_enabled": {
+    "description": "自然语言触发",
+    "type": "bool",
+    "hint": "开启后：@bot 且消息含 B 站链接即触发看视频；UP 主不支持自然语言，只能使用 /看主页。关闭后只能使用指令（需重载插件）",
+    "default": true
+  },
+  "command_enabled": {
+    "description": "启用指令",
+    "type": "bool",
+    "hint": "保留 /看视频、/看主页 手动入口",
+    "default": true
+  },
+  "group_whitelist": {
+    "description": "群白名单",
+    "type": "list",
+    "hint": "只在这些群生效；空 = 不限制",
+    "items": {
+      "type": "string"
+    },
+    "default": []
+  },
+  "group_blacklist": {
+    "description": "群黑名单",
+    "type": "list",
+    "hint": "这些群不生效",
+    "items": {
+      "type": "string"
+    },
+    "default": []
+  },
+  "cooldown_seconds": {
+    "description": "同会话冷却（秒）",
+    "type": "int",
+    "hint": "同一会话两次触发的最小间隔；0 = 不限制",
+    "default": 30
+  },
+  "user_daily_quota": {
+    "description": "每用户每日次数",
+    "type": "int",
+    "hint": "0 = 不限制",
+    "default": 20
+  },
+  "quota_exempt_admins": {
+    "description": "管理员豁免每日次数",
+    "type": "bool",
+    "hint": "开启后 AstrBot 管理员不占每日额度",
+    "default": true
+  },
+  "quota_exempt_users": {
+    "description": "豁免用户 ID 白名单",
+    "type": "list",
+    "hint": "这些用户不占每日额度；填 QQ 号",
+    "default": []
+  },
+  "sessdata": {
+    "description": "B 站 SESSDATA",
+    "type": "text",
+    "hint": "登录态；AI 字幕与完整评论需要。留空 = 游客态（无字幕、评论少）",
+    "default": ""
+  },
+  "user_agent": {
+    "description": "User-Agent",
+    "type": "string",
+    "hint": "留空使用内置 UA",
+    "default": ""
+  },
+  "request_timeout": {
+    "description": "B站请求超时（秒）",
+    "type": "int",
+    "hint": "单个请求超时",
+    "default": 20
+  },
+  "request_interval": {
+    "description": "B站请求间隔（秒）",
+    "type": "float",
+    "hint": "礼貌抓取间隔",
+    "default": 0.8
+  },
+  "vision_provider_id": {
+    "description": "视觉 provider",
+    "type": "string",
+    "hint": "留空 = 跟随主模型；主模型无视觉能力时不截帧。可填其他支持图片的 provider id",
+    "default": ""
+  },
+  "frame_count": {
+    "description": "子代理观看帧数",
+    "type": "int",
+    "hint": "4~16，默认 12",
+    "default": 12
+  },
+  "frame_height": {
+    "description": "截帧高度",
+    "type": "int",
+    "hint": "480 足够子代理辨认",
+    "default": 480
+  },
+  "frame_source": {
+    "description": "选帧策略",
+    "type": "string",
+    "hint": "hotspot = 高能看点/弹幕密度 + 均匀保底",
+    "options": [
+      "hotspot",
+      "uniform"
+    ],
+    "default": "hotspot"
+  },
+  "subagent_frame_mode": {
+    "description": "子代理看图模式",
+    "type": "string",
+    "hint": "individual = 12 张原图；contact_sheet_plus = 1 张联系图（更省 token）",
+    "options": [
+      "individual",
+      "contact_sheet_plus"
+    ],
+    "default": "individual"
+  },
+  "digest_max_chars": {
+    "description": "笔记长度上限",
+    "type": "int",
+    "hint": "子代理输出截断上限",
+    "default": 1500
+  },
+  "subagent_timeout": {
+    "description": "子代理超时（秒）",
+    "type": "int",
+    "hint": "单次 llm_generate 超时",
+    "default": 180
+  },
+  "subagent_retries": {
+    "description": "子代理重试次数",
+    "type": "int",
+    "hint": "失败重试",
+    "default": 1
+  },
+  "audio_transcription_enabled": {
+    "description": "音频转录（未实现）",
+    "type": "bool",
+    "hint": "预留接口，默认关闭；当前版本不实现",
+    "default": false
+  },
+  "audio_transcription_provider_id": {
+    "description": "音频转录 provider",
+    "type": "string",
+    "hint": "预留",
+    "default": ""
+  },
+  "include_subtitle": {
+    "description": "读取字幕",
+    "type": "bool",
+    "hint": "无字幕时照看并标注",
+    "default": true
+  },
+  "subtitle_langs": {
+    "description": "字幕语言优先级",
+    "type": "string",
+    "hint": "逗号分隔，如 zh-Hans,zh,ai-zh,en",
+    "default": "zh-Hans,zh,ai-zh,en"
+  },
+  "include_description": {
+    "description": "读取简介",
+    "type": "bool",
+    "hint": "",
+    "default": true
+  },
+  "include_comments": {
+    "description": "读取评论",
+    "type": "bool",
+    "hint": "",
+    "default": true
+  },
+  "comment_limit": {
+    "description": "热评数量",
+    "type": "int",
+    "hint": "默认 12",
+    "default": 12
+  },
+  "comment_reply_limit": {
+    "description": "每条热评的回复数",
+    "type": "int",
+    "hint": "默认 3",
+    "default": 3
+  },
+  "include_pinned_comment": {
+    "description": "包含 UP 置顶评论",
+    "type": "bool",
+    "hint": "",
+    "default": true
+  },
+  "comment_filter_ads": {
+    "description": "过滤广告/抽奖评论",
+    "type": "bool",
+    "hint": "",
+    "default": true
+  },
+  "max_duration_minutes": {
+    "description": "视频时长上限（分钟）",
+    "type": "int",
+    "hint": "超过则拒看；0 = 不限制",
+    "default": 90
+  },
+  "up_search_limit": {
+    "description": "UP 搜索候选数",
+    "type": "int",
+    "hint": "用户名歧义时最多给几个候选",
+    "default": 5
+  },
+  "up_exact_match_only": {
+    "description": "用户名仅精确匹配",
+    "type": "bool",
+    "hint": "开启后只接受完全同名的搜索结果",
+    "default": true
+  },
+  "archive_fallback_enabled": {
+    "description": "近期投稿第三方兜底",
+    "type": "bool",
+    "hint": "官方空间接口被风控时，用第三方 API 拉取近期投稿；只发送 UID，不带 Cookie",
+    "default": true
+  },
+  "archive_fallback_api": {
+    "description": "第三方投稿 API 地址",
+    "type": "text",
+    "hint": "默认 https://uapis.cn/api/v1/social/bilibili；可改为兼容 GET /archives 的地址",
+    "default": "https://uapis.cn/api/v1/social/bilibili"
+  },
+  "cache_enabled": {
+    "description": "缓存笔记",
+    "type": "bool",
+    "hint": "只缓存子代理笔记，不缓存原始材料",
+    "default": true
+  },
+  "cache_ttl_hours": {
+    "description": "缓存时长（小时）",
+    "type": "int",
+    "hint": "默认 168（7 天）",
+    "default": 168
+  },
+  "cache_max_entries": {
+    "description": "缓存条数上限",
+    "type": "int",
+    "hint": "超出按 LRU 清理",
+    "default": 500
+  },
+  "concurrency_limit": {
+    "description": "全局并发观看数",
+    "type": "int",
+    "hint": "默认 2",
+    "default": 2
+  },
+  "worker_threads": {
+    "description": "独立线程池大小",
+    "type": "int",
+    "hint": "抓取/截帧/子代理准备使用插件自己的线程池，默认 4，避免和其他插件抢默认线程池",
+    "default": 4
+  },
+  "ack_enabled": {
+    "description": "开始提示",
+    "type": "bool",
+    "hint": "收到观看请求后先回一句话，告诉用户正在看/正在查",
+    "default": true
+  },
+  "ack_template_video": {
+    "description": "看视频开始提示",
+    "type": "text",
+    "hint": "开始看视频时立即发送",
+    "default": "我去看看这个视频，稍等…"
+  },
+  "ack_template_up": {
+    "description": "查UP开始提示",
+    "type": "text",
+    "hint": "开始查 UP 主页时立即发送",
+    "default": "我去翻一下这个 UP 的主页，稍等～"
+  },
+  "prepare_timeout_video": {
+    "description": "视频准备超时（秒）",
+    "type": "int",
+    "hint": "抓取+截帧+子代理的总超时，默认 240",
+    "default": 240
+  },
+  "prepare_timeout_up": {
+    "description": "UP 准备超时（秒）",
+    "type": "int",
+    "hint": "查 UP 主页的总超时，默认 25",
+    "default": 25
+  },
+  "wait_notice_enabled": {
+    "description": "等待提示",
+    "type": "bool",
+    "hint": "观看期间再次唤醒时发送预制消息，不触发主模型",
+    "default": true
+  },
+  "wait_notice_allow_commands": {
+    "description": "等待提示放行的核心指令",
+    "type": "list",
+    "hint": "只放行这些系统核心指令；其它指令/聊天/请求都会提示并拦截。默认 stop/reset/new/stats 等",
+    "items": {
+      "type": "string"
+    },
+    "default": [
+      "stop",
+      "reset",
+      "new",
+      "help",
+      "stats",
+      "sid",
+      "name",
+      "provider",
+      "dashboard_update",
+      "set",
+      "unset"
+    ]
+  },
+  "wait_notice_template": {
+    "description": "等待提示模板",
+    "type": "text",
+    "hint": "支持 {elapsed}/{stage}/{title}/{bv}",
+    "default": "还在看呢…已经看了 {elapsed}（{stage}），别催啦"
+  },
+  "wait_notice_cooldown_seconds": {
+    "description": "等待提示冷却（秒）",
+    "type": "int",
+    "hint": "同一会话提示间隔",
+    "default": 15
+  },
+  "wait_notice_stop_event": {
+    "description": "等待提示后拦截消息",
+    "type": "bool",
+    "hint": "开启后本次消息不再进入主模型",
+    "default": true
+  },
+  "max_frame_mb": {
+    "description": "单帧大小上限（MB）",
+    "type": "int",
+    "hint": "超过则丢弃该帧",
+    "default": 3
+  },
+  "ffmpeg_path": {
+    "description": "ffmpeg 路径",
+    "type": "string",
+    "hint": "留空使用 imageio-ffmpeg 静态二进制",
+    "default": ""
+  },
+  "injection_guard": {
+    "description": "防提示注入",
+    "type": "bool",
+    "hint": "在注入笔记前后声明素材不是指令；关闭会去掉这层边界提示",
+    "default": true
+  }
+}
