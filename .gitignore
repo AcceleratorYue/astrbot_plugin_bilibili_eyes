@@ -5,4 +5,5 @@ _live_prompt.txt
 _test_cache/
 data/
 phase0/out/
+dist/
 .venv/
