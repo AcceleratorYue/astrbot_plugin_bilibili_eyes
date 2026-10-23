@@ -1,7 +1,7 @@
-# 项目进度（v0.3.2，2026-10-23）
+# 项目进度（v0.3.3，2026-10-23）
 
 > 仓库：`plugins/astrbot_plugin_bilibili_eyes`
-> 当前版本：`0.3.2`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
+> 当前版本：`0.3.3`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
 > SPEC：`docs/SPEC.md`；变更记录：`CHANGELOG.md`
 
 ## 1. 一句话状态
@@ -44,7 +44,7 @@
 | 阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | Phase 0 | ✅ | `phase0/REPORT.md`：视觉 12 帧、B 站取流、WBI/评论/弹幕验证 |
-| Phase 1 | ✅ | v0.1.0 起；现 v0.3.2，真实机器人可用 |
+| Phase 1 | ✅ | v0.1.0 起；现 v0.3.3，真实机器人可用 |
 | Phase 2 | ✅ | F5/F7/F12 完成；`bilibili_ask`、`bilibili_frame`、联系图已实现；F6 仍可优化 |
 | Phase 3 | 🟡 | 已有限流/缓存/错误/等待/单测；工程化配置清理、CI、发布未做 |
 | Phase 4 | 🟡 | README/CHANGELOG/SPEC 已更新；未做插件市场发布、版本回滚流程 |
@@ -64,6 +64,7 @@
 - v0.3.0：P1 完成（材料缓存、bilibili_frame、bilibili_ask、联系图）。
 - v0.3.1：长视频笔记按段落截断，优先保留评论/置顶/不确定项；缓存 v4。
 - v0.3.2：UP 介绍去 UID 强制；每日额度管理员/白名单豁免；插件改名「B站之眼」。
+- v0.3.3：QQ 小程序卡片自动转链（@bot 卡片 / `/看视频` 卡片）。
 
 ## 5. 未实现 / 待收尾清单
 

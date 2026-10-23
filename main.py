@@ -21,7 +21,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 # AstrBot 热重载通常只重新 import main，子模块会留在 sys.modules 里，
 # 导致代码更新后仍跑到旧的 eyes_client/eyes_subagent。这里先清掉再导入。
-for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache"):
+for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card"):
     sys.modules.pop(_module_name, None)
 
 from astrbot.api import logger
@@ -33,6 +33,7 @@ from astrbot.core.message.message_event_result import MessageChain
 import eyes_client as bc
 import eyes_subagent as sa
 from eyes_cache import MaterialStore, NoteCache
+from eyes_card import extract_bilibili_card_url
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_eyes"
 LOG = "[B站之眼]"
@@ -152,7 +153,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.3.2 已加载")
+        logger.info(f"{LOG} 插件 v0.3.3 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -416,6 +417,13 @@ class BilibiliEyesPlugin(Star):
         if self._is_own_command_text(text):
             return
         refs = bc.extract_video_refs(text)
+        page_text = text
+        if not refs:
+            card_url = extract_bilibili_card_url(event)
+            if card_url:
+                refs = bc.extract_video_refs(card_url) or [card_url]
+                page_text = card_url
+                logger.info(f"{LOG} 从小程序卡片转链：{card_url}")
         if refs:
             if not self._quota_ok(event):
                 return
@@ -423,7 +431,7 @@ class BilibiliEyesPlugin(Star):
                 "kind": "video",
                 "refs": refs,
                 "ref": refs[0],
-                "page": bc.extract_page(text),
+                "page": bc.extract_page(page_text),
                 "ignored": max(0, len(refs) - 1),
             }
             return
@@ -563,6 +571,13 @@ class BilibiliEyesPlugin(Star):
             return
         text = getattr(event, "message_str", "") or ""
         refs = bc.extract_video_refs(text)
+        page_text = text
+        if not refs:
+            card_url = extract_bilibili_card_url(event)
+            if card_url:
+                refs = bc.extract_video_refs(card_url) or [card_url]
+                page_text = card_url
+                logger.info(f"{LOG} 从小程序卡片转链：{card_url}")
         if not refs:
             event.should_call_llm(True)  # 纯指令回复，不要再触发默认 LLM
             yield event.plain_result("用法：/看视频 <B站链接或BV号>")
@@ -579,7 +594,7 @@ class BilibiliEyesPlugin(Star):
             "kind": "video",
             "refs": refs,
             "ref": refs[0],
-            "page": bc.extract_page(text),
+            "page": bc.extract_page(page_text),
             "ignored": max(0, len(refs) - 1),
         }
 

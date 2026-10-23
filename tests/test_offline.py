@@ -14,6 +14,7 @@ PLUGIN_DIR = HERE.parents[1]
 sys.path.insert(0, str(PLUGIN_DIR))
 
 import eyes_cache  # noqa: E402
+import eyes_card  # noqa: E402
 import eyes_client as bc  # noqa: E402
 import eyes_subagent as sa  # noqa: E402
 
@@ -48,6 +49,50 @@ def test_parse_refs() -> None:
     assert bc.parse_time_point("1:02:03") == 3723
     assert bc.parse_time_point("abc") is None
     print("✅ 链接/分P/空间/UID/时间点解析")
+
+
+def test_card_resolver() -> None:
+    card = {
+        "meta": {
+            "detail_1": {
+                "desc": "哔哩哔哩",
+                "qqdocurl": "https://b23.tv/AbCdEf",
+            }
+        }
+    }
+    event = SimpleNamespace(
+        message_str="",
+        message_obj=SimpleNamespace(raw_message=card, message=[]),
+    )
+    assert eyes_card.extract_bilibili_card_url(event) == "https://b23.tv/AbCdEf"
+
+    segment = [
+        {
+            "type": "json",
+            "data": {"data": json.dumps(card, ensure_ascii=False)},
+        }
+    ]
+    event2 = SimpleNamespace(
+        message_str="",
+        message_obj=SimpleNamespace(raw_message=segment, message=[]),
+    )
+    assert eyes_card.extract_bilibili_card_url(event2) == "https://b23.tv/AbCdEf"
+
+    event3 = SimpleNamespace(
+        message_str="[CQ:json,data=" + json.dumps(card, ensure_ascii=False) + "]",
+        message_obj=SimpleNamespace(raw_message=None, message=[]),
+    )
+    assert eyes_card.extract_bilibili_card_url(event3) == "https://b23.tv/AbCdEf"
+
+    event4 = SimpleNamespace(
+        message_str="",
+        message_obj=SimpleNamespace(
+            raw_message={"meta": {"x": {"qqdocurl": "https://example.com/a"}}},
+            message=[],
+        ),
+    )
+    assert eyes_card.extract_bilibili_card_url(event4) == ""
+    print("✅ QQ小程序卡片转链（dict/list/CQ/非B站）")
 
 
 def test_frame_selection() -> None:
@@ -276,7 +321,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.3.2" in meta
+    assert "version: 0.3.3" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -313,6 +358,7 @@ def test_archive_fallback() -> None:
 
 def main() -> int:
     test_parse_refs()
+    test_card_resolver()
     test_frame_selection()
     test_digest_helpers()
     test_note_cache()

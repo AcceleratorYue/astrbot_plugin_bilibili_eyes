@@ -150,6 +150,22 @@ async def run() -> int:
     assert event2._stopped is False
     print("✅ 自然语言视频触发登记 pending")
 
+    # 3b) QQ 小程序卡片转链后登记 pending
+    plugin_card = make_plugin()
+    event_card = FakeEvent("")
+    event_card.message_obj = SimpleNamespace(
+        raw_message={
+            "meta": {
+                "detail_1": {"qqdocurl": "https://b23.tv/AbCdEf"}
+            }
+        },
+        message=[],
+    )
+    await plugin_card.on_message(event_card)
+    card_pending = plugin_card._pending.get(event_card.unified_msg_origin, {})
+    assert "AbCdEf" in str(card_pending.get("ref")), card_pending
+    print("✅ QQ小程序卡片转链触发")
+
     # 4) 指令消息不会被自然语言分支重复登记
     plugin3 = make_plugin()
     event3 = FakeEvent("看主页 2431982")
