@@ -21,7 +21,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 # AstrBot 热重载通常只重新 import main，子模块会留在 sys.modules 里，
 # 导致代码更新后仍跑到旧的 eyes_client/eyes_subagent。这里先清掉再导入。
-for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio"):
+for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean"):
     sys.modules.pop(_module_name, None)
 
 from astrbot.api import logger
@@ -30,6 +30,7 @@ from astrbot.api.message_components import Plain
 from astrbot.api.star import Context, Star
 from astrbot.core.message.message_event_result import MessageChain
 
+import eyes_clean as ec
 import eyes_client as bc
 import eyes_subagent as sa
 from eyes_cache import MaterialStore, NoteCache
@@ -156,7 +157,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.4.2 已加载")
+        logger.info(f"{LOG} 插件 v0.5.0 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -980,6 +981,7 @@ class BilibiliEyesPlugin(Star):
         if max_minutes > 0 and video.duration > max_minutes * 60:
             raise bc.BiliError("too_long", f"视频时长 {video.duration}s")
         material = bc.Material(video=video)
+        material.video.desc = ec.clean_description(material.video.desc)
         if self._bool_opt("audio_transcription_enabled"):
             material.warnings.append("音频转录接口未实现（仅保留桩）")
         if not self._bool_opt("include_description"):
@@ -999,6 +1001,7 @@ class BilibiliEyesPlugin(Star):
                             self._int_opt("comment_reply_limit", 3),
                             self._bool_opt("comment_filter_ads"),
                             self._bool_opt("include_pinned_comment"),
+                            video.up_uid,
                         )
                     except Exception:
                         pass
@@ -1009,9 +1012,10 @@ class BilibiliEyesPlugin(Star):
             player = await self._run(client.get_player, video.bvid, video.cid)
             material.view_points = client.get_view_point_times(player)
             if self._bool_opt("include_subtitle"):
-                material.subtitles = await self._run(
+                raw_subtitles = await self._run(
                     client.get_subtitles, player, langs
                 )
+                material.subtitles = ec.merge_subtitles(raw_subtitles)
                 if not material.subtitles:
                     material.warnings.append("无可用字幕（可能是游客态或视频本身无字幕）")
         except bc.BiliError as exc:
@@ -1026,6 +1030,7 @@ class BilibiliEyesPlugin(Star):
                     self._int_opt("comment_reply_limit", 3),
                     self._bool_opt("comment_filter_ads"),
                     self._bool_opt("include_pinned_comment"),
+                    video.up_uid,
                 )
             except Exception as exc:
                 material.warnings.append(f"评论区不可用：{exc}")
@@ -1034,9 +1039,14 @@ class BilibiliEyesPlugin(Star):
                 f"{sum(1 for item in material.comments if getattr(item, 'pinned', False))} 条"
             )
         job.stage = "统计弹幕"
-        material.danmaku_peaks = await self._run(
-            client.get_danmaku_peaks, video.cid, video.duration
-        )
+        try:
+            peaks, keywords = await self._run(
+                client.get_danmaku_insights, video.cid, video.duration
+            )
+            material.danmaku_peaks = peaks
+            material.danmaku_keywords = keywords
+        except Exception as exc:
+            material.warnings.append(f"弹幕统计不可用：{exc}")
         return material
 
     async def _digest(self, material: bc.Material, event) -> str | None:
@@ -1085,20 +1095,23 @@ class BilibiliEyesPlugin(Star):
             material.warnings.append(f"取流失败：{exc}")
             return
         count = max(1, min(16, self._int_opt("frame_count", 12)))
+        # 多截几帧，给 dHash 去重留余量
+        candidate_count = min(24, count + 8)
         if str(self._opt("frame_source") or "hotspot") == "uniform":
             timestamps = [
                 round(
-                    material.video.duration * (0.05 + 0.9 * index / max(1, count - 1)),
+                    material.video.duration
+                    * (0.05 + 0.9 * index / max(1, candidate_count - 1)),
                     1,
                 )
-                for index in range(count)
+                for index in range(candidate_count)
             ]
         else:
             timestamps = client.select_timestamps(
                 material.video.duration,
                 material.view_points,
                 material.danmaku_peaks,
-                count,
+                candidate_count,
                 material.subtitles,
             )
         out_dir = self._data_dir() / "frames" / material.video.bvid
@@ -1110,8 +1123,11 @@ class BilibiliEyesPlugin(Star):
             self._int_opt("frame_height", 480),
             float(self._int_opt("max_frame_mb", 3)),
         )
+        pairs = await self._run(ec.dedupe_frames, pairs, count)
         material.frames = [path for path, _seconds in pairs]
         material.frame_times = [seconds for _path, seconds in pairs]
+        if len(material.frames) < count:
+            material.warnings.append(f"去重后保留 {len(material.frames)} 帧")
         if (
             str(self._opt("subagent_frame_mode") or "individual")
             == "contact_sheet_plus"
