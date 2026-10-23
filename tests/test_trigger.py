@@ -74,6 +74,8 @@ def make_plugin():
     plugin._semaphore = asyncio.Semaphore(1)
     plugin._cache = None
     plugin._materials = plugin_main.MaterialStore(1800, 20)
+    plugin._video_locks = {}
+    plugin._video_results = {}
     plugin._session_materials = {}
     plugin._pending = {}
     plugin._sessdata_warned = set()
@@ -289,6 +291,30 @@ async def run() -> int:
     exempt_event.get_sender_id = lambda: "10002"
     assert plugin_q._quota_ok(exempt_event) and plugin_q._quota_ok(exempt_event)
     print("✅ 每日额度：管理员/白名单豁免")
+
+    # 14) 同一 BV+page 并发只抓一次、只跑一次子代理
+    plugin_sf = make_plugin()
+    counts = {"collect": 0, "digest": 0}
+
+    async def fake_collect(job, ref, page):
+        counts["collect"] += 1
+        await asyncio.sleep(0.05)
+        return SimpleNamespace(video=SimpleNamespace(bvid=ref, page=page))
+
+    async def fake_digest(material, event):
+        counts["digest"] += 1
+        return "摘要"
+
+    plugin_sf._collect = fake_collect
+    plugin_sf._digest = fake_digest
+    job_sf = SimpleNamespace()
+    results = await asyncio.gather(
+        plugin_sf._collect_video_once(job_sf, FakeEvent(""), "BV1single", 1),
+        plugin_sf._collect_video_once(job_sf, FakeEvent(""), "BV1single", 1),
+    )
+    assert counts == {"collect": 1, "digest": 1}, counts
+    assert all(result[1] == "摘要" for result in results)
+    print("✅ single-flight：并发只抓一次")
 
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
     assert "asyncio.to_thread(" not in source, "不应再使用默认线程池"

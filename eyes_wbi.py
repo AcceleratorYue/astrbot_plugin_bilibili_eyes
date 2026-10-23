@@ -6,6 +6,8 @@ import gzip
 import hashlib
 import http.client
 import json
+import logging
+import random
 import socket
 import ssl
 import time
@@ -13,6 +15,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
+
+logger = logging.getLogger(__name__)
 
 MIXIN_KEY_ENC_TAB = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
@@ -152,12 +156,43 @@ class BiliHTTP:
                     return raw
         return raw
 
+    @staticmethod
+    def _backoff_delay(attempt: int) -> float:
+        return min(4.0, 0.8 * (2**attempt)) + random.uniform(0, 0.3)
+
     def get_json(
-        self, url: str, timeout: int = 20, headers: dict[str, str] | None = None
+        self,
+        url: str,
+        timeout: int = 20,
+        headers: dict[str, str] | None = None,
+        retries: int = 2,
     ) -> dict:
-        return json.loads(
-            self.request(url, timeout=timeout, headers=headers).decode("utf-8")
-        )
+        attempts = max(1, int(retries) + 1)
+        for attempt in range(attempts):
+            try:
+                data = json.loads(
+                    self.request(url, timeout=timeout, headers=headers).decode("utf-8")
+                )
+                if data.get("code") == -352 and attempt < attempts - 1:
+                    delay = self._backoff_delay(attempt)
+                    logger.warning(
+                        f"B站风控 -352，{delay:.1f}s 后重试 "
+                        f"({attempt + 1}/{attempts})"
+                    )
+                    time.sleep(delay)
+                    continue
+                return data
+            except urllib.error.HTTPError as exc:
+                if exc.code in (412, 429) and attempt < attempts - 1:
+                    delay = self._backoff_delay(attempt)
+                    logger.warning(
+                        f"B站 HTTP {exc.code}，{delay:.1f}s 后重试 "
+                        f"({attempt + 1}/{attempts}): {url[:120]}"
+                    )
+                    time.sleep(delay)
+                    continue
+                raise
+        return {}
 
     def wbi_keys(self) -> tuple[str, str]:
         # nav 的 wbi key 会轮换；缓存太久会导致签名过期、空间接口 412

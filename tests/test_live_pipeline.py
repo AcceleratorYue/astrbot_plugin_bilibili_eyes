@@ -143,6 +143,8 @@ async def main() -> int:
     )
     plugin._cache = None
     plugin._materials = plugin_main.MaterialStore(1800, 20)
+    plugin._video_locks = {}
+    plugin._video_results = {}
     plugin._session_materials = {}
     plugin._pending = {}
     plugin._sessdata_warned = set()

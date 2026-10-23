@@ -612,7 +612,8 @@ class BiliClient:
             except Exception:
                 pass
         archives = []
-        for attempt in range(3):
+        # 重试统一由 BiliHTTP.get_json 的指数退避处理，这里只尝试一次
+        for _attempt in range(1):
             try:
                 arc_data = self._check(
                     self.http.get_json(
@@ -645,8 +646,6 @@ class BiliClient:
                 break
             except Exception:
                 archives.clear()
-                if attempt < 2:
-                    time.sleep(0.6 if attempt == 0 else 1.5)
         archive_source = "official" if archives else "none"
         if not archives:
             fallback_titles, fallback_total = self._fallback_archives(uid)

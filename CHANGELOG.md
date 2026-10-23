@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 (2026-10-23)
+
+P2：Phase 3 工程化（single-flight / 退避 / 测试 / 发布文档）。
+
+- **P2-1 每 BV single-flight**：
+  - 新增 `_video_locks` + `_video_results`，同一 `ref+page` 并发只抓取、只跑一次子代理；
+  - 第二个请求等待后复用结果（120 秒 TTL），日志 `single-flight 等待/复用`；
+  - 工具 `bilibili_watch` 与 `/看视频` 共用同一套逻辑。
+- **P2-2 风控退避**：
+  - `BiliHTTP.get_json` 对 HTTP 412/429 和 `code=-352` 做指数退避（约 0.8s→1.6s→3.2s + 抖动）；
+  - UP 近期投稿不再叠加固定 3 次短重试，统一交给 HTTP 退避。
+- **P2-3 测试**：
+  - 新增 HTTP mock（`stat` 解析、置顶评论）、412 退避重试、single-flight 并发只抓一次；
+  - 现有离线/触发/等待测试全绿。
+- **P2-4 文档**：
+  - README 增加常见问题（卡片、评论、412、额度、UP 自然介绍）；
+  - 新增 `docs/RELEASE.md` 发布检查表。
+- 版本号同步到 0.4.0。
+
 ## 0.3.4 (2026-10-23)
 
 修复「引用 B 站小程序卡片 + @bot」仍然无法识别的问题。

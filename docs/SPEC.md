@@ -191,7 +191,7 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | 阶段 | 交付 | 状态 |
 | --- | --- | --- |
 | Phase 0 | 验证脚本：① deepseek-flash 视觉 + 12 帧的耗时/token/质量；② B 站取流+截帧；③ 字幕/评论/弹幕/WBI 直连 | ✅ 完成，见 `phase0/REPORT.md` |
-| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.3.4，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
+| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.4.0，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
 | Phase 2 | 视觉闭环（F5~F7 + 追问/附图） | ✅ F5/F7/F12 完成；`bilibili_ask`/`bilibili_frame`/联系图已实现；F6 字幕高信息段仍可优化 |
 | Phase 3 | 工程化（F11~F17 + 单测） | 🟡 缓存/错误/等待/单测已有；配置清理、single-flight、CI 待做 |
 | Phase 4 | 文档/配置/安装/上架 | 🟡 README/CHANGELOG/SPEC 已更新；插件市场发布待做 |
@@ -465,3 +465,10 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 - 根因：卡片在当前消息的 `Reply.chain` 中，之前只扫当前消息 raw_message。
 - `eyes_card` 递归扫描 `Reply.chain` 里的 Json 组件，引用卡片也能转链。
 - 测试新增「引用消息里的卡片」。
+
+### v0.4.0 P2 工程化（2026-10-23）
+
+- single-flight：同一 ref+page 并发只抓取/只跑一次子代理，结果缓存 120s；
+- 412/429/-352 指数退避（`BiliHTTP.get_json`），UP 投稿统一使用；
+- 测试：HTTP mock（stat/置顶）、退避重试、single-flight 并发；
+- 文档：README 常见问题、`docs/RELEASE.md` 发布检查表。

@@ -48,6 +48,8 @@ def test_parse_refs() -> None:
     assert bc.parse_time_point("00:30") == 30
     assert bc.parse_time_point("1:02:03") == 3723
     assert bc.parse_time_point("abc") is None
+    assert 0.8 <= bc.BiliHTTP._backoff_delay(0) <= 1.11
+    assert 1.6 <= bc.BiliHTTP._backoff_delay(1) <= 1.91
     print("✅ 链接/分P/空间/UID/时间点解析")
 
 
@@ -268,6 +270,65 @@ def test_ask_prompt() -> None:
     print("✅ 追问子代理：ask 提示词与短答案")
 
 
+def test_http_mock_parsing() -> None:
+    client = bc.BiliClient(interval=0)
+    view_payload = {
+        "bvid": "BV1mock",
+        "aid": 100,
+        "cid": 200,
+        "title": "模拟视频",
+        "owner": {"name": "模拟UP", "mid": 9},
+        "duration": 100,
+        "desc": "简介",
+        "pubdate": 1700000000,
+        "pages": [{"cid": 200, "duration": 100}],
+        "stat": {
+            "view": 3460340,
+            "danmaku": 7350,
+            "reply": 21657,
+            "like": 120323,
+            "coin": 76899,
+            "favorite": 24588,
+            "share": 77069,
+        },
+    }
+    client.http.get_json = lambda *args, **kwargs: {"code": 0, "data": view_payload}
+    video = client.get_video("BV1mock")
+    assert video.views == 3460340 and video.likes == 120323
+    assert video.favorites == 24588 and video.pubdate == 1700000000
+
+    comment_payload = {
+        "replies": [
+            {"member": {"uname": "A"}, "content": {"message": "普通评论"}, "like": 1}
+        ],
+        "top_replies": [
+            {"member": {"uname": "UP"}, "content": {"message": "置顶评论"}, "like": 9}
+        ],
+    }
+    client.http.get_json = lambda *args, **kwargs: {"code": 0, "data": comment_payload}
+    comments = client.get_comments(100, limit=12, include_pinned=True)
+    assert comments[0].pinned and comments[0].content == "置顶评论"
+    print("✅ HTTP mock：视频 stat / 置顶评论解析")
+
+
+def test_backoff_retry() -> None:
+    import urllib.error
+
+    http = bc.BiliHTTP()
+    calls = {"n": 0}
+
+    def fake_request(url, timeout=20, headers=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise urllib.error.HTTPError(url, 412, "blocked", {}, None)
+        return b'{"code": 0, "data": {"ok": true}}'
+
+    http.request = fake_request
+    data = http.get_json("https://example.invalid/test", retries=1)
+    assert calls["n"] == 2 and data["data"]["ok"] is True
+    print("✅ 412 指数退避后重试成功")
+
+
 def test_frame_tool() -> None:
     import main as plugin_main
 
@@ -331,7 +392,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.3.4" in meta
+    assert "version: 0.4.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -375,6 +436,8 @@ def main() -> int:
     test_material_store()
     test_archive_fallback()
     test_ask_prompt()
+    test_http_mock_parsing()
+    test_backoff_retry()
     test_frame_tool()
     test_schema()
     print("\n全部离线测试通过")

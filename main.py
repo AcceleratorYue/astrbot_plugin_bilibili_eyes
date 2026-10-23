@@ -46,6 +46,7 @@ FOLLOWUP_RE = re.compile(
     r"发布时间|投稿|UP主|up主|主页|看了什么|讲了什么)"
 )
 FOLLOWUP_TTL_SECONDS = 30 * 60
+VIDEO_RESULT_TTL_SECONDS = 120
 CACHE_VERSION = "4"
 
 DEFAULT_OPTIONS: dict = {
@@ -150,10 +151,12 @@ class BilibiliEyesPlugin(Star):
         )
         self._cache: NoteCache | None = None
         self._materials = MaterialStore(FOLLOWUP_TTL_SECONDS, 20)
+        self._video_locks: dict[str, asyncio.Lock] = {}
+        self._video_results: dict[str, tuple[float, bc.Material, str | None]] = {}
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.3.4 已加载")
+        logger.info(f"{LOG} 插件 v0.4.0 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -169,6 +172,8 @@ class BilibiliEyesPlugin(Star):
             self._executor.shutdown(wait=False, cancel_futures=True)
         except Exception:
             pass
+        self._video_locks.clear()
+        self._video_results.clear()
         logger.info(f"{LOG} 插件已卸载")
 
     # -- 配置 ---------------------------------------------------------
@@ -715,10 +720,9 @@ class BilibiliEyesPlugin(Star):
         self._active[umo] = job
         try:
             async with self._semaphore:
-                material = await self._collect(
-                    job, refs[0], bc.extract_page(str(bvid))
+                material, digest = await self._collect_video_once(
+                    job, event, refs[0], bc.extract_page(str(bvid))
                 )
-                digest = await self._digest(material, event)
             if not digest:
                 return "这次没看成（可能网络/风控/无视觉），请稍后再试。"
             self._materials.put(umo, material, digest)
@@ -885,13 +889,61 @@ class BilibiliEyesPlugin(Star):
 
     # -- 观看流程 -----------------------------------------------------
 
+    @staticmethod
+    def _video_key(ref: str, page: int | None) -> str:
+        refs = bc.extract_video_refs(str(ref or ""))
+        normalized = refs[0] if refs else str(ref or "")
+        return f"{normalized.strip().lower()}|{int(page or 1)}"
+
+    def _prune_video_results(self) -> None:
+        now = time.monotonic()
+        expired = [
+            key
+            for key, (created, _material, _digest) in self._video_results.items()
+            if now - created > VIDEO_RESULT_TTL_SECONDS
+        ]
+        for key in expired:
+            self._video_results.pop(key, None)
+            lock = self._video_locks.get(key)
+            if lock is not None and not lock.locked():
+                self._video_locks.pop(key, None)
+        if len(self._video_results) > 50:
+            ordered = sorted(self._video_results.items(), key=lambda item: item[1][0])
+            for key, _value in ordered[: len(self._video_results) - 50]:
+                self._video_results.pop(key, None)
+                lock = self._video_locks.get(key)
+                if lock is not None and not lock.locked():
+                    self._video_locks.pop(key, None)
+
+    async def _collect_video_once(
+        self, job: Job, event, ref: str, page: int | None
+    ) -> tuple[bc.Material, str | None]:
+        """同一个 ref+page 的并发请求只抓取/只跑一次子代理，其余复用结果。"""
+
+        key = self._video_key(ref, page)
+        lock = self._video_locks.setdefault(key, asyncio.Lock())
+        if lock.locked():
+            logger.info(f"{LOG} single-flight 等待：{key}")
+        async with lock:
+            self._prune_video_results()
+            hit = self._video_results.get(key)
+            if hit and time.monotonic() - hit[0] <= VIDEO_RESULT_TTL_SECONDS:
+                logger.info(f"{LOG} single-flight 复用：{key}")
+                return hit[1], hit[2]
+            material = await self._collect(job, ref, page)
+            digest = await self._digest(material, event)
+            self._video_results[key] = (time.monotonic(), material, digest)
+            self._prune_video_results()
+            return material, digest
+
     async def _prepare_video(self, event, pending: dict, job: Job) -> str:
         """收集材料 + 子代理笔记，返回注入主模型请求的 section。"""
 
         ref = pending.get("ref") or (pending.get("refs") or [""])[0]
         ignored = int(pending.get("ignored") or 0)
-        material = await self._collect(job, ref, pending.get("page"))
-        digest = await self._digest(material, event)
+        material, digest = await self._collect_video_once(
+            job, event, ref, pending.get("page")
+        )
         job.stage = "整理内容"
         self._materials.put(
             event.unified_msg_origin, material, digest or ""
