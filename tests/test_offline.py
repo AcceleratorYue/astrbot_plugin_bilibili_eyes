@@ -92,7 +92,17 @@ def test_card_resolver() -> None:
         ),
     )
     assert eyes_card.extract_bilibili_card_url(event4) == ""
-    print("✅ QQ小程序卡片转链（dict/list/CQ/非B站）")
+
+    # 引用消息里的卡片：Reply.chain 中包含 Json 组件
+    class FakeReply:
+        chain = [SimpleNamespace(data=card)]
+
+    event5 = SimpleNamespace(
+        message_str="",
+        message_obj=SimpleNamespace(raw_message=None, message=[FakeReply()]),
+    )
+    assert eyes_card.extract_bilibili_card_url(event5) == "https://b23.tv/AbCdEf"
+    print("✅ QQ小程序卡片转链（dict/list/CQ/引用消息/非B站）")
 
 
 def test_frame_selection() -> None:
@@ -321,7 +331,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.3.3" in meta
+    assert "version: 0.3.4" in meta
     print("✅ 配置 schema / metadata")
 
 

@@ -86,11 +86,22 @@ def extract_bilibili_card_url(event: Any) -> str:
 
     message_obj = getattr(event, "message_obj", None)
     raw_candidates: list[Any] = []
+
+    def visit_component(component: Any, depth: int = 0) -> None:
+        if component is None or depth > 5:
+            return
+        raw_candidates.append(getattr(component, "raw", None))
+        raw_candidates.append(getattr(component, "data", None))
+        text = getattr(component, "message_str", None)
+        if isinstance(text, str):
+            raw_candidates.append(text)
+        for child in getattr(component, "chain", None) or []:
+            visit_component(child, depth + 1)
+
     if message_obj is not None:
         raw_candidates.append(getattr(message_obj, "raw_message", None))
         for component in getattr(message_obj, "message", None) or []:
-            raw_candidates.append(getattr(component, "raw", None))
-            raw_candidates.append(getattr(component, "data", None))
+            visit_component(component)
     text = str(getattr(event, "message_str", "") or "").strip()
     if text.startswith("{") or "[CQ:json" in text:
         raw_candidates.append(text)
