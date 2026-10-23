@@ -1,4 +1,4 @@
-# 哔哩哔哩眼睛 · astrbot_plugin_bilibili_eyes
+# B站之眼 · astrbot_plugin_bilibili_eyes
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
 
@@ -10,7 +10,7 @@
 
 ## 状态
 
-- ✅ Phase 1（v0.3.1）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
+- ✅ Phase 1（v0.3.2）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
 - 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
 - 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
 - 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
@@ -32,6 +32,7 @@
 - 📊 v0.2.10：补播放量/弹幕/评论/点赞/投币/收藏/转发数据
 - ✅ Phase 2（v0.3.0）：会话材料缓存 30 分钟、`bilibili_ask` 追问、`bilibili_frame` 截图、联系图模式
 - 🧷 v0.3.1：长视频笔记按段落截断，优先保留评论区/置顶/不确定项
+- 🔁 v0.3.2：UP 介绍更自然、每日额度管理员/白名单豁免、插件名改为「B站之眼」
 - ⏳ Phase 3：工程化与更多测试
 
 ## 触发方式
@@ -52,13 +53,16 @@
 
 ## 配置要点
 
-在 AstrBot WebUI → 插件管理 → 哔哩哔哩眼睛 中配置：
+在 AstrBot WebUI → 插件管理 → B站之眼 中配置：
 
 | 配置 | 默认 | 说明 |
 | --- | --- | --- |
 | `sessdata` | **必填** | B 站登录态；**不填会导致插件工作异常**：无字幕、评论少、UP 主页/近期投稿易风控、查询失败 |
 | `vision_provider_id` | 空 | 空 = 跟随主模型；主模型无视觉则不截帧（文本笔记）。也可指定支持图片的 provider |
 | `nl_trigger_enabled` | 开 | 视频自然语言触发（UP 主只用 `/看主页`） |
+| `user_daily_quota` | 20 | 每用户每日次数；0=不限制 |
+| `quota_exempt_admins` | 开 | 管理员豁免每日次数 |
+| `quota_exempt_users` | 空 | 豁免用户 ID 白名单（QQ 号） |
 | `frame_count` | 12 | 子代理观看帧数（4~16） |
 | `frame_source` | hotspot | hotspot=热点+均匀保底；uniform=纯均匀 |
 | `subagent_frame_mode` | individual | individual=12 帧原图；contact_sheet_plus=1 张联系图（省 token） |

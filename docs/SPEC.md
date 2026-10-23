@@ -81,6 +81,8 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | `group_blacklist` | list | `[]` | 排除这些群 |
 | `cooldown_seconds` | int | 60 | 同群冷却 |
 | `user_daily_quota` | int | 20 | 每用户每日次数 |
+| `quota_exempt_admins` | bool | true | 管理员豁免每日次数 |
+| `quota_exempt_users` | list | `[]` | 豁免用户 ID 白名单 |
 
 ### 5.2 视觉与子代理
 
@@ -189,7 +191,7 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | 阶段 | 交付 | 状态 |
 | --- | --- | --- |
 | Phase 0 | 验证脚本：① deepseek-flash 视觉 + 12 帧的耗时/token/质量；② B 站取流+截帧；③ 字幕/评论/弹幕/WBI 直连 | ✅ 完成，见 `phase0/REPORT.md` |
-| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.3.1，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
+| Phase 1 | 文本闭环（F1~F4 + 子代理 + 工具 + 等待提示） | ✅ 已实现（v0.3.2，已安装；端到端 25~40s；详见 `docs/PROGRESS.md`） |
 | Phase 2 | 视觉闭环（F5~F7 + 追问/附图） | ✅ F5/F7/F12 完成；`bilibili_ask`/`bilibili_frame`/联系图已实现；F6 字幕高信息段仍可优化 |
 | Phase 3 | 工程化（F11~F17 + 单测） | 🟡 缓存/错误/等待/单测已有；配置清理、single-flight、CI 待做 |
 | Phase 4 | 文档/配置/安装/上架 | 🟡 README/CHANGELOG/SPEC 已更新；插件市场发布待做 |
@@ -443,3 +445,9 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
   - 空行/句号截断仍保留。
 - 缓存版本升到 v4，旧摘要自动失效。
 - 实测该视频新提示词已包含置顶评论原文和多条评论。
+
+### v0.3.2 使用反馈调整（2026-10-23）
+
+- UP 介绍：去掉强制 UID，摘要不再以 UID 开头，提示词要求「自然说名字、不主动报 UID」。
+- 每日额度：`quota_exempt_admins`（默认开）+ `quota_exempt_users` 白名单，豁免者不计数。
+- 插件改名：`display_name` 改为「B站之眼」，日志前缀 `[B站之眼]`。

@@ -35,7 +35,7 @@ import eyes_subagent as sa
 from eyes_cache import MaterialStore, NoteCache
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_eyes"
-LOG = "[B站眼睛]"
+LOG = "[B站之眼]"
 TOOL_NAMES = ("bilibili_watch", "bilibili_ask", "bilibili_frame")
 MAX_CONTEXT_CHARS = 1200
 
@@ -55,6 +55,8 @@ DEFAULT_OPTIONS: dict = {
     "group_blacklist": [],
     "cooldown_seconds": 30,
     "user_daily_quota": 20,
+    "quota_exempt_admins": True,
+    "quota_exempt_users": [],
     "sessdata": "",
     "user_agent": "",
     "request_timeout": 20,
@@ -150,7 +152,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.3.1 已加载")
+        logger.info(f"{LOG} 插件 v0.3.2 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -254,6 +256,15 @@ class BilibiliEyesPlugin(Star):
             return False
         return True
 
+    def _is_admin_event(self, event: AstrMessageEvent) -> bool:
+        checker = getattr(event, "is_admin", None)
+        if checker is None:
+            return False
+        try:
+            return bool(checker() if callable(checker) else checker)
+        except Exception:
+            return False
+
     def _quota_ok(self, event: AstrMessageEvent) -> bool:
         quota = self._int_opt("user_daily_quota", 20)
         if quota <= 0:
@@ -263,6 +274,10 @@ class BilibiliEyesPlugin(Star):
         except Exception:
             sender = ""
         if not sender:
+            return True
+        if self._bool_opt("quota_exempt_admins") and self._is_admin_event(event):
+            return True
+        if sender in {str(item) for item in self._list_opt("quota_exempt_users")}:
             return True
         today = time.strftime("%Y-%m-%d")
         key = f"{today}|{sender}"
@@ -1179,8 +1194,8 @@ class BilibiliEyesPlugin(Star):
         return (
             f"你刚才去看了这个 UP 的主页，下面是你看到后记得的信息{guard_text}：\n"
             "<up_profile>\n" + up_digest + "\n</up_profile>\n"
-            f"回复里必须原样说出 UP 主名字「{info.name}」（UID {info.uid}），"
-            "不能只说“这个 UP”或省略名字。\n"
+            f"回复里要自然地说出 UP 主名字「{info.name}」，"
+            "不能只说“这个 UP”或省略名字；不要主动报 UID，除非用户明确问。\n"
             "如果下面有近期投稿，可以自然挑一两条聊聊，不要机械罗列。\n"
             "请以你自己的身份回应，可以聊你注意到的点；不要解释信息来源，"
             "也不要提「子代理」「资料」「查询结果」这些词，不要复述字段名或输出摘要格式。"

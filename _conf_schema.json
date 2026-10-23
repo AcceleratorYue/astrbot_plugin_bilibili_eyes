@@ -47,6 +47,18 @@
     "hint": "0 = 不限制",
     "default": 20
   },
+  "quota_exempt_admins": {
+    "description": "管理员豁免每日次数",
+    "type": "bool",
+    "hint": "开启后 AstrBot 管理员不占每日额度",
+    "default": true
+  },
+  "quota_exempt_users": {
+    "description": "豁免用户 ID 白名单",
+    "type": "list",
+    "hint": "这些用户不占每日额度；填 QQ 号",
+    "default": []
+  },
   "sessdata": {
     "description": "B 站 SESSDATA",
     "type": "text",

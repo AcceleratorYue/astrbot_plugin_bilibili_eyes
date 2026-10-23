@@ -1,10 +1,10 @@
 name: astrbot_plugin_bilibili_eyes
-display_name: 哔哩哔哩眼睛
+display_name: B站之眼
 short_desc: 子代理看 B 站视频，把客观笔记交给主模型理解后回复
 desc: >-
   让主模型通过子代理"看" B 站内容：子代理在隔离上下文里读取字幕/简介/评论、
   抽取 12 帧关键画面并整理成客观笔记，主模型拿笔记后用自己的判断和语气回复。
   支持视频信息、字幕、评论、UP 主页、热点选帧、等待提示与笔记缓存。
-version: 0.3.1
+version: 0.3.2
 author: AcceleratorYue
 astrbot_version: ">=4.16,<5"

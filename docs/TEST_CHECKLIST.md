@@ -1,4 +1,4 @@
-# 实机测试清单（v0.3.1）
+# 实机测试清单（v0.3.2）
 
 > 目标：在真实 QQ/AstrBot 环境验证 `/看视频`、`/看主页`、`/bili状态`、等待提示与拦截。
 > 建议在一个**测试群**执行，避免打扰正常群；每项独立，失败不影响后续。
@@ -7,7 +7,7 @@
 
 - [ ] 已重载插件，日志出现：
   ```text
-  [B站眼睛] 插件 v0.3.1 已加载
+  [B站之眼] 插件 v0.3.2 已加载
   ```
 - [ ] 插件配置里 `sessdata` 已填（本清单以已配置为前提）。
 - [ ] `vision_provider_id` 留空或指向支持图片的 provider。
@@ -28,7 +28,7 @@
 | ID | 操作 | 期望 | 实测/通过 |
 | --- | --- | --- | --- |
 | T01 | 发 `/bili状态` | 1~2 秒内返回「✅ SESSDATA 有效」+ 正确 UID/昵称 | [ ] |
-| T02 | 看日志 `B站眼睛 bili状态 完成` | 耗时 < 2 秒，无报错 | [ ] |
+| T02 | 看日志 `B站之眼 bili状态 完成` | 耗时 < 2 秒，无报错 | [ ] |
 
 ## 2. 看视频
 
@@ -91,12 +91,12 @@ PowerShell：
 
 ```powershell
 Get-Content D:\QQbot\astrbot\data\logs\astrbot.log -Tail 300 |
-  Select-String "B站眼睛|看主页|看视频|ERROR|ERRO|Traceback"
+  Select-String "B站之眼|看主页|看视频|ERROR|ERRO|Traceback"
 ```
 
 重点看：
 
-- [ ] `插件 v0.3.1 已加载`
+- [ ] `插件 v0.3.2 已加载`
 - [ ] `bili状态 完成` < 2 秒
 - [ ] `UP 主页：... 近期投稿来源=...`
 - [ ] 观看期间有 `等待提示：umo=... stage=...`
@@ -106,7 +106,7 @@ Get-Content D:\QQbot\astrbot\data\logs\astrbot.log -Tail 300 |
 
 1. 测试编号（T01~T29）；
 2. 实际消息截图（含 @ 和机器人回复）；
-3. 日志中最近 20 行 `[B站眼睛]` 相关记录；
+3. 日志中最近 20 行 `[B站之眼]` 相关记录；
 4. `/bili状态` 的结果（UID/昵称，不要发 SESSDATA 本身）；
 5. 是否配置了 SESSDATA（只回答“有/没有”，不要贴值）。
 

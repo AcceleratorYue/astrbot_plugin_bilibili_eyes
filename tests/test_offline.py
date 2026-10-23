@@ -133,6 +133,7 @@ def test_digest_helpers() -> None:
         uid=1, name="测试UP", sign="", level=6, fans=100, archives=["视频A"]
     )
     assert "视频A" in sa.build_up_digest(up_titles)
+    assert "UID" not in sa.build_up_digest(up_titles)
     print("✅ 观察内容/主模型提示词/截断/全角引号/UP近期投稿")
 
 
@@ -260,6 +261,8 @@ def test_schema() -> None:
         "enabled",
         "nl_trigger_enabled",
         "injection_guard",
+        "quota_exempt_admins",
+        "quota_exempt_users",
         "sessdata",
         "vision_provider_id",
         "frame_count",
@@ -272,7 +275,8 @@ def test_schema() -> None:
     assert schema["nl_trigger_enabled"]["default"] is True
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
-    assert "version: 0.3.1" in meta
+    assert "display_name: B站之眼" in meta
+    assert "version: 0.3.2" in meta
     print("✅ 配置 schema / metadata")
 
 

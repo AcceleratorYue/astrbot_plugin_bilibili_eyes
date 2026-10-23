@@ -24,6 +24,10 @@ class FakeEvent:
         self.sent = []
         self.extras = {}
         self.call_llm = False
+        self.admin = False
+
+    def is_admin(self):
+        return self.admin
 
     def should_call_llm(self, value):
         self.call_llm = value
@@ -251,11 +255,31 @@ async def run() -> int:
     assert "未配置 SESSDATA" not in event14.sent_text()
     print("✅ SESSDATA 未配置提醒（每会话一次）")
 
+    # 13) 每日额度：管理员豁免 + 用户白名单
+    plugin_q = make_plugin()
+    plugin_q._config = {
+        **plugin_q._config,
+        "user_daily_quota": 1,
+        "quota_exempt_admins": True,
+        "quota_exempt_users": ["10002"],
+    }
+    admin_event = FakeEvent("看视频 BV1AHnB6NEhM")
+    admin_event.admin = True
+    assert plugin_q._quota_ok(admin_event) and plugin_q._quota_ok(admin_event)
+    normal_event = FakeEvent("看视频 BV1AHnB6NEhM")
+    assert plugin_q._quota_ok(normal_event)
+    assert not plugin_q._quota_ok(normal_event)
+    exempt_event = FakeEvent("看视频 BV1AHnB6NEhM")
+    exempt_event.get_sender_id = lambda: "10002"
+    assert plugin_q._quota_ok(exempt_event) and plugin_q._quota_ok(exempt_event)
+    print("✅ 每日额度：管理员/白名单豁免")
+
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
     assert "asyncio.to_thread(" not in source, "不应再使用默认线程池"
     assert "ThreadPoolExecutor" in source and "def _run(" in source
     assert "bilibili_up" not in source, "UP 工具应移除，只保留 /看主页 指令"
-    assert "必须原样说出 UP 主名字" in source
+    assert "自然地说出 UP 主名字" in source
+    assert "不要主动报 UID" in source
     print("✅ 阻塞调用全部走插件独立线程池；UP 仅指令")
     return 0
 

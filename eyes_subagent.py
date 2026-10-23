@@ -354,7 +354,7 @@ async def run_ask(
 
 def build_up_digest(info: UpInfo) -> str:
     lines = [
-        f"UP 主：{info.name}（UID {info.uid}）",
+        f"UP 主：{info.name}",
         f"等级：LV{info.level} | 粉丝：{info.fans} | 投稿数：{info.archive_count}",
         f"签名：{info.sign or '（无）'}",
     ]
