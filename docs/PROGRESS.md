@@ -137,7 +137,16 @@ python tests/test_live_pipeline.py
 - 任务中再 @：应收到等待提示；`/stop`、`/reset`、`/new`、`/stats` 始终可用。
 - 看完后追问：主模型可调用 `bilibili_ask`；要某帧图可调用 `bilibili_frame`。
 
-## 8. 真实机器人回归（2026-10-23，v0.3.1）
+## 8. 发布与备份（2026-10-23）
+
+- 备份：`C:\Users\23942\OneDrive\Desktop\QQbot\backups\astrbot_plugin_bilibili_eyes_0.4.1_20261023_200826.zip`
+  （含 source / installed / git bundle / MANIFEST；不含 SESSDATA/config）
+- GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
+- Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.4.2>
+- Release 附件：`astrbot_plugin_bilibili_eyes-0.4.2.zip`（约 101 KB）
+- AstrBot Cloud 提交：待登录网页手动提交，步骤见 `docs/PUBLISH.md`。
+
+## 9. 真实机器人回归（2026-10-23，v0.3.1）
 
 视频：`BV1pJnB6iEd7`（41 分钟，分P 1/2，12 条评论、1 条置顶）。
 
