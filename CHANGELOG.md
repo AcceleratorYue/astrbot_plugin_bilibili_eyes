@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.4 (2026-10-24)
+
+AstrBot 插件市场安全审查修复。
+
+- `eyes_wbi.py` 不再使用 Python 内置 `logging`，改为
+  `from astrbot.api import logger`，满足“日志只能从 astrbot.api 导入”的规定；
+- `/bili状态` 的 `nav` 检查从事件循环内同步网络 I/O 改为走插件自己的
+  `ThreadPoolExecutor`，与其它 B 站抓取保持一致；
+- 兼容热重载旧 `eyes_client` 的 fallback nav 也走线程池；
+- 版本号同步到 0.5.4。
+
 ## 0.5.3 (2026-10-24)
 
 去掉不自然的总结式开头。
