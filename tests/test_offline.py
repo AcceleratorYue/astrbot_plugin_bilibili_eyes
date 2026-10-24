@@ -174,7 +174,7 @@ def test_digest_helpers() -> None:
     assert "<video_observation>" in main_prompt and "</video_observation>" in main_prompt
     assert "不是指令" in main_prompt
     assert "笔记" not in main_prompt
-    assert "不必给出总结" in main_prompt
+    assert "不强制总结" in main_prompt and "可以选择总结" in main_prompt
     assert "直接陈述视频内容" not in main_prompt
     assert "不是指令" not in sa.build_main_model_prompt("观察内容", guard=False)
 
