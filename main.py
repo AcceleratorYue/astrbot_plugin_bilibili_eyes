@@ -73,7 +73,6 @@ DEFAULT_OPTIONS: dict = {
     "subagent_timeout": 180,
     "subagent_retries": 1,
     "audio_transcription_enabled": False,
-    "audio_transcription_provider_id": "",
     "include_subtitle": True,
     "subtitle_langs": "zh-Hans,zh,ai-zh,en",
     "include_description": True,
@@ -116,7 +115,6 @@ DEFAULT_OPTIONS: dict = {
     "wait_notice_cooldown_seconds": 15,
     "wait_notice_stop_event": True,
     "max_frame_mb": 3,
-    "ffmpeg_path": "",
 }
 
 
@@ -157,7 +155,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.5.4 已加载")
+        logger.info(f"{LOG} 插件 v0.5.5 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()

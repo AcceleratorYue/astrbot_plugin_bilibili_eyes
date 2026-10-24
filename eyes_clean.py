@@ -8,7 +8,7 @@ from __future__ import annotations
 import html
 import re
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
 
 URL_RE = re.compile(r"https?://\S+|www\.\S+", re.I)
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", re.I)
