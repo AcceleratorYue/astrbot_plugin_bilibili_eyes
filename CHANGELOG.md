@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.2 (2026-10-24)
+
+提示词可自定义 + 默认回复不再强制总结。
+
+- 新增配置：
+  - `subagent_system_prompt`：子代理系统提示词；
+  - `subagent_output_instructions`：子代理输出格式；
+  - `main_model_prompt_template`：回传主模型的提示词模板，支持
+    `{digest}` / `{guard_note}` / `{style_note}` / `{ignored_note}` /
+    `{status_note}` / `{question_note}` / `{question}`；
+- 默认回传提示词改成“随口聊两句、可以只挑一个细节或感受，不必复述整个视频，
+  也不必总结；只有用户明确问讲了什么/总结一下时才概括”；
+- `bilibili_watch` 工具返回也使用同一套可自定义模板；
+- 自定义模板缺少 `{digest}` 时自动追加观察内容；
+- 补充提示词测试。
+
 ## 0.5.1 (2026-10-24)
 
 下游桥接：给 B站之手提供只读的“上一次视频”接口。
