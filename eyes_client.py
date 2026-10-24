@@ -13,18 +13,14 @@ import random
 import re
 import string
 import subprocess
-import time
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 
 from eyes_clean import (
-    clean_description,
     danmaku_keywords,
     extract_time_marks,
     is_low_value_comment,
-    merge_subtitles,
 )
 from eyes_wbi import UA, BiliHTTP
 
@@ -410,30 +406,6 @@ class BiliClient:
 
     # -- 弹幕密度 -------------------------------------------------------
 
-    def get_danmaku_peaks(self, cid: int, duration: int, top: int = 8) -> list[float]:
-        try:
-            raw = self.http.request(
-                self._api(f"/x/v1/dm/list.so?oid={cid}"), timeout=self.timeout
-            )
-        except Exception:
-            return []
-        text = raw.decode("utf-8", "replace")
-        times = []
-        for item in re.findall(r'<d p="([^"]+)"', text):
-            try:
-                times.append(float(item.split(",")[0]))
-            except Exception:
-                continue
-        if not times:
-            return []
-        step = max(1, int(duration or 0) // 60)
-        hist: dict[int, int] = {}
-        for value in times:
-            bin_index = int(value // step)
-            hist[bin_index] = hist.get(bin_index, 0) + 1
-        ranked = sorted(hist.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
-        return [bin_index * step + step / 2 for bin_index, _ in ranked]
-
     def get_danmaku_insights(
         self, cid: int, duration: int, top: int = 8, keyword_limit: int = 6
     ) -> tuple[list[float], list[tuple[float, str]]]:
@@ -809,5 +781,4 @@ def _quote(value: str) -> str:
     return urllib.parse.quote(value)
 
 
-def today_key() -> str:
-    return date.today().isoformat()
+

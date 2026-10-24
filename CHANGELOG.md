@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.5 (2026-10-24)
+
+代码自查与清理，无行为变化。
+
+- 删除未使用的 `BiliClient.get_danmaku_peaks()`（实际使用 `get_danmaku_insights()`）；
+- 删除未使用的 `today_key()`；
+- 清理未使用导入：`time`、`date`、`clean_description`、`merge_subtitles`、
+  `textwrap`、`Any`；
+- 删除从未被读取的配置项 `audio_transcription_provider_id` 和 `ffmpeg_path`；
+- 同步清理 SPEC/PUBLISH/PROGRESS 中的旧版本与旧配置引用；
+- 补充 README 变更记录。
+
 ## 0.5.4 (2026-10-24)
 
 AstrBot 插件市场安全审查修复。

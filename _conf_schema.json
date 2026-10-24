@@ -163,12 +163,6 @@
     "hint": "预留接口，默认关闭；当前版本不实现",
     "default": false
   },
-  "audio_transcription_provider_id": {
-    "description": "音频转录 provider",
-    "type": "string",
-    "hint": "预留",
-    "default": ""
-  },
   "include_subtitle": {
     "description": "读取字幕",
     "type": "bool",
@@ -357,12 +351,6 @@
     "type": "int",
     "hint": "超过则丢弃该帧",
     "default": 3
-  },
-  "ffmpeg_path": {
-    "description": "ffmpeg 路径",
-    "type": "string",
-    "hint": "留空使用 imageio-ffmpeg 静态二进制",
-    "default": ""
   },
   "injection_guard": {
     "description": "防提示注入",
