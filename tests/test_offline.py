@@ -165,6 +165,9 @@ def test_digest_helpers() -> None:
     assert "测试视频" in prompt and "[00:00] 大家好" in prompt and "好看" in prompt
     assert "发布时间" in prompt and "UP置顶" in prompt
     assert "播放数据" in prompt and "播放 1.2万" in prompt and "收藏 789" in prompt
+    assert "自定义格式" in sa.build_material_prompt(
+        material, output_instructions="自定义格式"
+    )
 
     main_prompt = sa.build_main_model_prompt("观察内容", ignored_links=1)
     assert "只看了第一个" in main_prompt
