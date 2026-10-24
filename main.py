@@ -157,7 +157,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.5.0 已加载")
+        logger.info(f"{LOG} 插件 v0.5.1 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -271,6 +271,45 @@ class BilibiliEyesPlugin(Star):
             return bool(checker() if callable(checker) else checker)
         except Exception:
             return False
+
+    def get_last_video(self, umo: str) -> dict | None:
+        """供下游插件（B站之手）读取最近一次视频观看结果。
+
+        只读、不触发抓取；只返回视频，不返回 UP 主页；超过 30 分钟返回 None。
+        下游插件只能通过这个公开方法取目标，不能访问 _materials 等私有字段。
+        """
+
+        cached = self._session_materials.get(str(umo))
+        if not isinstance(cached, dict) or cached.get("kind") != "video":
+            return None
+        created = float(cached.get("created") or 0)
+        if not created or time.time() - created > FOLLOWUP_TTL_SECONDS:
+            self._session_materials.pop(str(umo), None)
+            return None
+        material = None
+        try:
+            hit = self._materials.get(str(umo))
+            if hit:
+                material = hit[0]
+        except Exception:
+            material = None
+        video = getattr(material, "video", None) if material is not None else None
+        bvid = str(cached.get("bvid") or getattr(video, "bvid", "") or "")
+        if not bvid:
+            return None
+        aid = int(cached.get("aid") or getattr(video, "aid", 0) or 0)
+        cid = int(cached.get("cid") or getattr(video, "cid", 0) or 0)
+        return {
+            "bvid": bvid,
+            "aid": aid,
+            "cid": cid,
+            "page": int(cached.get("page") or getattr(video, "page", 1) or 1),
+            "title": str(cached.get("title") or getattr(video, "title", "") or ""),
+            "up_uid": int(cached.get("up_uid") or getattr(video, "up_uid", 0) or 0),
+            "up_name": str(cached.get("up_name") or getattr(video, "up_name", "") or ""),
+            "watched_at": created,
+            "digest": str(cached.get("digest") or ""),
+        }
 
     def _quota_ok(self, event: AstrMessageEvent) -> bool:
         quota = self._int_opt("user_daily_quota", 20)
@@ -731,8 +770,12 @@ class BilibiliEyesPlugin(Star):
                 "kind": "video",
                 "digest": digest,
                 "bvid": material.video.bvid,
+                "aid": material.video.aid,
+                "cid": material.video.cid,
                 "page": material.video.page,
                 "title": material.video.title,
+                "up_uid": material.video.up_uid,
+                "up_name": material.video.up_name,
                 "pinned": [
                     str(item.content)
                     for item in material.comments
@@ -953,8 +996,12 @@ class BilibiliEyesPlugin(Star):
             "kind": "video",
             "digest": digest or "",
             "bvid": material.video.bvid,
+            "aid": material.video.aid,
+            "cid": material.video.cid,
             "page": material.video.page,
             "title": material.video.title,
+            "up_uid": material.video.up_uid,
+            "up_name": material.video.up_name,
             "pinned": [
                 str(item.content)
                 for item in material.comments

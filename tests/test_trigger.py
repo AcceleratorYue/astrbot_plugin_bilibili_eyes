@@ -316,6 +316,38 @@ async def run() -> int:
     assert all(result[1] == "摘要" for result in results)
     print("✅ single-flight：并发只抓一次")
 
+    # 15) 下游桥接：get_last_video 只返回 30 分钟内的视频目标
+    plugin_bridge = make_plugin()
+    material = SimpleNamespace(
+        video=SimpleNamespace(
+            bvid="BV1bridge",
+            aid=111,
+            cid=222,
+            page=1,
+            title="桥接测试",
+            up_uid=333,
+            up_name="UP",
+        )
+    )
+    plugin_bridge._materials.put("bridge:umo", material, "digest")
+    plugin_bridge._session_materials["bridge:umo"] = {
+        "kind": "video",
+        "bvid": "BV1bridge",
+        "page": 1,
+        "title": "桥接测试",
+        "created": time.time(),
+        "digest": "digest",
+    }
+    target = plugin_bridge.get_last_video("bridge:umo")
+    assert target and target["aid"] == 111 and target["cid"] == 222
+    assert target["title"] == "桥接测试" and target["digest"] == "digest"
+    plugin_bridge._session_materials["bridge:umo"]["kind"] = "up"
+    assert plugin_bridge.get_last_video("bridge:umo") is None
+    plugin_bridge._session_materials["bridge:umo"]["kind"] = "video"
+    plugin_bridge._session_materials["bridge:umo"]["created"] = time.time() - 1900
+    assert plugin_bridge.get_last_video("bridge:umo") is None
+    print("✅ 下游桥接：只返回 30 分钟内的视频目标")
+
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
     assert "asyncio.to_thread(" not in source, "不应再使用默认线程池"
     assert "ThreadPoolExecutor" in source and "def _run(" in source

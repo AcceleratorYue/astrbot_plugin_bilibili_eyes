@@ -477,7 +477,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.5.0" in meta
+    assert "version: 0.5.1" in meta
     print("✅ 配置 schema / metadata")
 
 
