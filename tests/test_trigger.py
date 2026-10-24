@@ -67,6 +67,7 @@ class FakeEvent:
 def make_plugin():
     plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
     plugin._config = {**plugin_main.DEFAULT_OPTIONS, "cache_enabled": False}
+    plugin._executor = None
     plugin._active = {}
     plugin._wait_at = {}
     plugin._cooldown = {}

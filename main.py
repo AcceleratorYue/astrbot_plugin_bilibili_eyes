@@ -157,7 +157,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.5.3 已加载")
+        logger.info(f"{LOG} 插件 v0.5.4 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -698,13 +698,13 @@ class BilibiliEyesPlugin(Star):
             return
         client = self._client()
         try:
-            # 这里刻意同步调用：nav 正常只要 0.2~0.3s，同步执行不会被
-            # asyncio.to_thread 的默认线程池排队拖到几十秒。
-            status = client.check_login()
+            # nav 也走插件自己的线程池，避免在事件循环里做同步网络 I/O。
+            status = await self._run(client.check_login)
         except AttributeError:
             # 兼容热重载后仍残留旧 eyes_client 模块的进程
             try:
-                payload = client.http.get_json(
+                payload = await self._run(
+                    client.http.get_json,
                     "https://api.bilibili.com/x/web-interface/nav",
                     10,
                 )
