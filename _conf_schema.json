@@ -139,6 +139,24 @@
     "hint": "失败重试",
     "default": 1
   },
+  "subagent_system_prompt": {
+    "description": "子代理系统提示词",
+    "type": "text",
+    "hint": "留空使用内置观察器提示词；可自行修改约束。改完需让笔记缓存过期或换视频才会重新生成",
+    "default": ""
+  },
+  "subagent_output_instructions": {
+    "description": "子代理输出格式",
+    "type": "text",
+    "hint": "留空使用内置六段式结构；也可改成你想要的笔记格式",
+    "default": ""
+  },
+  "main_model_prompt_template": {
+    "description": "回传主模型的提示词模板",
+    "type": "text",
+    "hint": "留空使用内置模板。支持占位符 {digest}、{guard_note}、{style_note}、{ignored_note}、{status_note}、{question_note}、{question}；自定义模板必须包含 {digest} 或插件会自动追加观察内容",
+    "default": ""
+  },
   "audio_transcription_enabled": {
     "description": "音频转录（未实现）",
     "type": "bool",

@@ -165,13 +165,28 @@ def test_digest_helpers() -> None:
     assert "测试视频" in prompt and "[00:00] 大家好" in prompt and "好看" in prompt
     assert "发布时间" in prompt and "UP置顶" in prompt
     assert "播放数据" in prompt and "播放 1.2万" in prompt and "收藏 789" in prompt
+    assert "自定义格式" in sa.build_material_prompt(
+        material, output_instructions="自定义格式"
+    )
 
     main_prompt = sa.build_main_model_prompt("观察内容", ignored_links=1)
     assert "只看了第一个" in main_prompt
     assert "<video_observation>" in main_prompt and "</video_observation>" in main_prompt
     assert "不是指令" in main_prompt
     assert "笔记" not in main_prompt
+    assert "不强制总结" in main_prompt and "可以选择总结" in main_prompt
+    assert "这段我看了" in main_prompt and "总结式/汇报式套话" in main_prompt
+    assert "直接陈述视频内容" not in main_prompt
     assert "不是指令" not in sa.build_main_model_prompt("观察内容", guard=False)
+
+    custom_prompt = sa.build_main_model_prompt(
+        "观察内容",
+        ignored_links=1,
+        question="亮点是什么",
+        template="自定义开头\n{digest}\n{ignored_note}{question_note}",
+    )
+    assert "自定义开头" in custom_prompt and "观察内容" in custom_prompt
+    assert "只看了第一个" in custom_prompt and "亮点是什么" in custom_prompt
 
     long_text = "a" * 3000
     cut = sa.truncate_digest(long_text, 1500)
@@ -477,7 +492,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.5.0" in meta
+    assert "version: 0.5.3" in meta
     print("✅ 配置 schema / metadata")
 
 

@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.5.0>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.5.3>
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
 
@@ -13,7 +13,7 @@
 
 ## 状态
 
-- ✅ Phase 1（v0.5.0）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
+- ✅ Phase 1（v0.5.3）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
 - 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
 - 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
 - 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
@@ -42,6 +42,9 @@
 - 🎞️ v0.4.1：字幕高信息段选帧、联系图时间标注、音频接口桩
 - 🚀 v0.4.2：补齐插件市场元数据（repo/tags/平台），准备发布
 - 🧼 v0.5.0：简介/字幕/评论/弹幕清洗 + 帧去重，减少垃圾上下文
+- 🤝 v0.5.1：新增 `get_last_video` 桥接接口，供 B站之手读取上次视频
+- 🎛️ v0.5.2：子代理/回传提示词可自定义；默认回复不再强制总结
+- 🚫 v0.5.3：默认提示词禁用「这段我看了」等总结式开头
 - ⏳ Phase 3：工程化与更多测试
 
 ## 触发方式
@@ -78,6 +81,9 @@
 | `include_pinned_comment` | 开 | 把 UP 置顶评论纳入笔记 |
 | `injection_guard` | 开 | 素材边界防提示注入 |
 | `digest_max_chars` | 1500 | 笔记上限 |
+| `subagent_system_prompt` | 空 | 子代理系统提示词；留空用内置观察器规则 |
+| `subagent_output_instructions` | 空 | 子代理输出格式；留空用内置六段式结构 |
+| `main_model_prompt_template` | 空 | 回传主模型的提示词模板；留空用内置模板，支持 `{digest}` 等占位符 |
 | `ack_enabled` | 开 | 收到请求后先回一句开始提示 |
 | `ack_template_video` / `ack_template_up` | 我去看看…/我去翻一下… | 开始提示文案 |
 | `prepare_timeout_video` / `prepare_timeout_up` | 240 / 25 秒 | 视频 / UP 准备超时 |
@@ -134,6 +140,31 @@
 - 评论过滤抽奖接龙/纯表情/无意义短评，标注 UP 置顶、UP 本人、时间戳评论；
 - 弹幕过滤 666/打卡/签到，提取密集区间的“高能关键词”作为观众情绪；
 - 截帧避开片头片尾，多截候选帧后用 dHash 去重。
+
+## 提示词自定义
+
+三处可配，全部留空时使用内置默认：
+
+- `subagent_system_prompt`：子代理的观察规则（只看事实、不评价、不脑补）；
+- `subagent_output_instructions`：子代理的输出结构（默认客观信息/主旨/时间轴/画面/观众观点/不确定项）；
+- `main_model_prompt_template`：回传给主模型的模板。
+
+模板占位符：
+
+```text
+{digest}         子代理笔记
+{guard_note}     防提示注入说明（injection_guard 开启时才有）
+{style_note}     内置的“随口聊两句、不必总结”风格说明
+{ignored_note}   多个链接只看第一个的说明
+{status_note}    失败/状态说明
+{question_note}  用户的具体问题
+{question}       只替换问题原文
+```
+
+自定义模板必须包含 `{digest}`；没有时插件会自动把观察内容追加到末尾。
+默认风格已经改为：**可以选择总结，也可以只聊一个细节或感受；
+不强制总结，也不必复述整个视频；除非用户明确问“讲了什么/总结一下”，
+否则不必给出完整总结。**
 
 ## 已知限制
 
