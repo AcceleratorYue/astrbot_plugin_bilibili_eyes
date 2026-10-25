@@ -155,7 +155,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.5.9 已加载")
+        logger.info(f"{LOG} 插件 v0.5.10 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
