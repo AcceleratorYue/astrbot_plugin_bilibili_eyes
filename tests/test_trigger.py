@@ -17,6 +17,7 @@ import main as plugin_main  # noqa: E402
 class FakeEvent:
     def __init__(self, text: str):
         self.message_str = text
+        self.message_obj = SimpleNamespace(message_id="test-message")
         self.unified_msg_origin = "test:GroupMessage:1"
         self.is_at_or_wake_command = True
         self._stopped = False
@@ -233,6 +234,33 @@ async def run() -> int:
     await plugin4.on_waiting(event8)
     assert event8._stopped and len(event8.sent) == sent_before
     print("✅ 冷却期内只拦截不刷屏")
+
+    # 9.5) 观看期间普通群聊（未 @bot）静默拦截，避免另起 LLM 打断
+    plugin_w = make_plugin()
+    event_w = FakeEvent("群友普通聊天")
+    event_w.is_at_or_wake_command = False
+    plugin_w._active[event_w.unified_msg_origin] = plugin_main.Job(
+        started=0, stage="截帧"
+    )
+    await plugin_w.on_waiting(event_w)
+    assert event_w._stopped and not event_w.sent
+    print("✅ 观看期间普通群聊静默拦截")
+
+    # 9.6) 普通消息不能消费刚登记的视频 pending
+    plugin_pending = make_plugin()
+    plugin_pending._pending[event_w.unified_msg_origin] = {
+        "kind": "video",
+        "ref": "BV1pending",
+        "message_id": "original-message",
+        "created": time.time(),
+    }
+    event_other = FakeEvent("随便聊聊")
+    event_other.message_obj.message_id = "other-message"
+    req_other = SimpleNamespace(prompt="随便聊聊")
+    await plugin_pending.on_llm_request(event_other, req_other)
+    assert event_w.unified_msg_origin in plugin_pending._pending
+    assert "video_observation" not in req_other.prompt
+    print("✅ 普通消息不会消费视频待办")
 
     # 10) /bili状态：未配置 / 有效 / 失效
     class FakeClient:

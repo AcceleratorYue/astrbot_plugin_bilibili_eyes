@@ -155,7 +155,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.5.8 已加载")
+        logger.info(f"{LOG} 插件 v0.5.9 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -309,6 +309,12 @@ class BilibiliEyesPlugin(Star):
             "digest": str(cached.get("digest") or ""),
         }
 
+    def _event_message_id(self, event: AstrMessageEvent) -> str:
+        try:
+            return str(getattr(event.message_obj, "message_id", "") or "")
+        except Exception:
+            return ""
+
     def _quota_ok(self, event: AstrMessageEvent) -> bool:
         quota = self._int_opt("user_daily_quota", 20)
         if quota <= 0:
@@ -407,11 +413,14 @@ class BilibiliEyesPlugin(Star):
     async def on_waiting(self, event: AstrMessageEvent):
         if not self._bool_opt("wait_notice_enabled"):
             return
-        if not getattr(event, "is_at_or_wake_command", False):
-            return
         umo = event.unified_msg_origin
         job = self._active.get(umo)
         if job is None:
+            return
+        if not getattr(event, "is_at_or_wake_command", False):
+            # 普通群聊不会触发本插件，但它会另起一次 LLM 请求，可能把正在
+            # 观看的任务打断/合并掉。观看期间直接静默拦下同会话普通消息。
+            event.stop_event()
             return
         # 只放行系统核心指令（/stop、/reset、/new、/stats 等白名单），
         # 其它指令、普通聊天、别的 B 站请求都拦截，避免并发。
@@ -452,9 +461,10 @@ class BilibiliEyesPlugin(Star):
         if not self._session_allowed(event):
             return
         umo = event.unified_msg_origin
-        if umo in self._active or umo in self._pending:
+        if umo in self._active:
             return
-        if not self._cooldown_ok(event):
+        existing_pending = self._pending.get(umo)
+        if existing_pending is None and not self._cooldown_ok(event):
             return
         text = getattr(event, "message_str", "") or ""
         if self._is_own_command_text(text):
@@ -468,7 +478,8 @@ class BilibiliEyesPlugin(Star):
                 page_text = card_url
                 logger.info(f"{LOG} 从小程序卡片转链：{card_url}")
         if refs:
-            if not self._quota_ok(event):
+            existing = self._pending.get(umo)
+            if existing is None and not self._quota_ok(event):
                 return
             self._pending[umo] = {
                 "kind": "video",
@@ -476,6 +487,8 @@ class BilibiliEyesPlugin(Star):
                 "ref": refs[0],
                 "page": bc.extract_page(page_text),
                 "ignored": max(0, len(refs) - 1),
+                "message_id": self._event_message_id(event),
+                "created": time.time(),
             }
             return
 
@@ -546,7 +559,19 @@ class BilibiliEyesPlugin(Star):
         """在主模型请求发出前，把「观看笔记」注入 req.prompt。"""
 
         umo = event.unified_msg_origin
-        pending = self._pending.pop(umo, None)
+        pending = self._pending.get(umo)
+        if pending:
+            expected = str(pending.get("message_id") or "")
+            actual = self._event_message_id(event)
+            created = float(pending.get("created") or 0)
+            if expected and actual and expected != actual:
+                # 普通聊天/别的消息不能消费刚登记的视频任务。
+                pending = None
+            elif created and time.time() - created > 60:
+                self._pending.pop(umo, None)
+                pending = None
+            else:
+                self._pending.pop(umo, None)
         if not pending:
             section = self._followup_section(event)
             if section:
@@ -642,6 +667,8 @@ class BilibiliEyesPlugin(Star):
             "ref": refs[0],
             "page": bc.extract_page(page_text),
             "ignored": max(0, len(refs) - 1),
+            "message_id": self._event_message_id(event),
+            "created": time.time(),
         }
 
     @filter.command("看主页", alias=["bup"])
@@ -667,7 +694,12 @@ class BilibiliEyesPlugin(Star):
             yield event.plain_result("今天的观看次数已用完。")
             return
         query = bc.normalize_up_query(query)
-        self._pending[event.unified_msg_origin] = {"kind": "up", "query": query}
+        self._pending[event.unified_msg_origin] = {
+            "kind": "up",
+            "query": query,
+            "message_id": self._event_message_id(event),
+            "created": time.time(),
+        }
 
     async def _reply_now(self, event, text: str) -> None:
         """绕过回复管线直接发送，避免命令结果排队等待。"""

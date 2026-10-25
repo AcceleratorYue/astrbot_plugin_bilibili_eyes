@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.5.8>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.5.9>
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
 
@@ -13,7 +13,7 @@
 
 ## 状态
 
-- ✅ Phase 1（v0.5.8）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
+- ✅ Phase 1（v0.5.9）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
 - 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
 - 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
 - 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
@@ -50,6 +50,7 @@
 - 🎬 v0.5.6：回复开头先给一句活泼的“看完啦”反馈，再进入内容
 - 🚫 v0.5.7：去掉带时长的示例，增加多种看后反馈，禁止主动报时长
 - 🎭 v0.5.8：看后反馈跟随视频情绪，不再一律活泼正向
+- 🛡️ v0.5.9：观看任务绑定触发消息，普通群聊不再消费/打断任务
 - ⏳ Phase 3：工程化与更多测试
 
 ## 触发方式
