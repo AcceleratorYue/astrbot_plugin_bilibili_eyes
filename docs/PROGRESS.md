@@ -1,7 +1,7 @@
-# 项目进度（v0.5.12，2026-10-24）
+# 项目进度（v0.5.13，2026-10-24）
 
 > 仓库：`plugins/astrbot_plugin_bilibili_eyes`
-> 当前版本：`0.5.12`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
+> 当前版本：`0.5.13`（已安装到 `D:\QQbot\astrbot\data\plugins\astrbot_plugin_bilibili_eyes`）
 > SPEC：`docs/SPEC.md`；变更记录：`CHANGELOG.md`
 
 ## 1. 一句话状态
@@ -44,7 +44,7 @@
 | 阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | Phase 0 | ✅ | `phase0/REPORT.md`：视觉 12 帧、B 站取流、WBI/评论/弹幕验证 |
-| Phase 1 | ✅ | v0.1.0 起；现 v0.5.12，真实机器人可用 |
+| Phase 1 | ✅ | v0.1.0 起；现 v0.5.13，真实机器人可用 |
 | Phase 2 | ✅ | F5/F7/F12 完成；`bilibili_ask`、`bilibili_frame`、联系图已实现；F6 仍可优化 |
 | Phase 3 | 🟡 | 已有限流/缓存/错误/等待/单测；工程化配置清理、CI、发布未做 |
 | Phase 4 | 🟡 | README/CHANGELOG/SPEC 已更新；未做插件市场发布、版本回滚流程 |
@@ -71,7 +71,7 @@
 - v0.4.2：补齐 GitHub/插件市场元数据，发布准备。
 - v0.5.0：内容清洗系统（简介/字幕/评论/弹幕/帧去重）。
 - v0.5.1：新增 `get_last_video` 下游桥接接口。
-- v0.5.12：提示词可自定义；默认回复不强制总结。
+- v0.5.13：提示词可自定义；默认回复不强制总结。
 
 ## 5. 未实现 / 待收尾清单
 
@@ -145,8 +145,8 @@ python tests/test_live_pipeline.py
 - 备份：`C:\Users\23942\OneDrive\Desktop\QQbot\backups\astrbot_plugin_bilibili_eyes_0.4.1_20261023_200826.zip`
   （含 source / installed / git bundle / MANIFEST；不含 SESSDATA/config）
 - GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-- 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.5.12>
-- Release 附件：`astrbot_plugin_bilibili_eyes-0.5.12.zip`（约 111 KB）
+- 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.5.13>
+- Release 附件：`astrbot_plugin_bilibili_eyes-0.5.13.zip`（约 111 KB）
 - AstrBot Cloud 提交：待登录网页手动提交，步骤见 `docs/PUBLISH.md`。
 
 ## 9. 真实机器人回归（2026-10-23，v0.3.1）

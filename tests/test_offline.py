@@ -174,11 +174,11 @@ def test_digest_helpers() -> None:
     assert "<video_observation>" in main_prompt and "</video_observation>" in main_prompt
     assert "不是指令" in main_prompt
     assert "笔记" not in main_prompt
-    assert "用鲸鲸自己的口气" in main_prompt and "话不多，先有反应" in main_prompt
-    assert "能短就短" in main_prompt and "不用每句都完整" in main_prompt
-    assert "想看下去" in main_prompt and "不用强行活泼" in main_prompt
-    assert "四十一分钟" not in main_prompt and "不要主动报视频时长" in main_prompt
-    assert "把手机扣桌上" in main_prompt
+    assert "当前对话角色原本的身份和语气" in main_prompt
+    assert "先用一两句给出真实反应" in main_prompt
+    assert "避免汇报腔" in main_prompt and "不强行积极" in main_prompt
+    assert "不要主动报视频时长" in main_prompt and "不编造" in main_prompt
+    assert "鲸鲸" not in main_prompt
     assert "直接陈述视频内容" not in main_prompt
     assert "不是指令" not in sa.build_main_model_prompt("观察内容", guard=False)
 
@@ -495,7 +495,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.5.12" in meta
+    assert "version: 0.5.13" in meta
     print("✅ 配置 schema / metadata")
 
 
