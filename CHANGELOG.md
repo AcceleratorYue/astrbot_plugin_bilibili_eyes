@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 (2026-10-30)
+
+补全音频转录（ASR）P0，复用 AstrBot 内置 STT Provider。
+
+- `eyes_audio.py` 从桩改为真实适配器：文本清洗、断句、近似时间轴；
+- `eyes_client.py` 支持音频流地址和 ffmpeg 抽音频；
+- 无官方字幕且开启 ASR 时，自动抽音频并调用当前/指定 STT Provider；
+- 新增 `audio_transcription_provider_id`、`max_seconds`、`max_mb`、`timeout`；
+- ASR 失败、超时、无 Provider 时平滑降级；
+- `/bili状态` 显示 ASR 开关和 Provider；
+- 补充 ASR 单元测试和 README 说明。
+
 ## 0.5.13 (2026-10-29)
 
 默认回传提示词改为无个人人格倾向的通用版本。

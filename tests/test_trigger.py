@@ -325,7 +325,7 @@ async def run() -> int:
     plugin_sf = make_plugin()
     counts = {"collect": 0, "digest": 0}
 
-    async def fake_collect(job, ref, page):
+    async def fake_collect(job, ref, page, event=None):
         counts["collect"] += 1
         await asyncio.sleep(0.05)
         return SimpleNamespace(video=SimpleNamespace(bvid=ref, page=page))

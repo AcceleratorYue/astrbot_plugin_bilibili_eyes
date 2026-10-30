@@ -158,10 +158,34 @@
     "default": ""
   },
   "audio_transcription_enabled": {
-    "description": "音频转录（未实现）",
+    "description": "音频转录（ASR）",
     "type": "bool",
-    "hint": "预留接口，默认关闭；当前版本不实现",
+    "hint": "没有官方字幕时，用 AstrBot 已配置的 STT Provider 转录音频；默认关闭",
     "default": false
+  },
+  "audio_transcription_provider_id": {
+    "description": "ASR Provider ID",
+    "type": "text",
+    "hint": "留空使用当前会话的 STT Provider；也可指定 AstrBot 中某个语音转文字 Provider 的 ID",
+    "default": ""
+  },
+  "audio_transcription_max_seconds": {
+    "description": "ASR 最多转录秒数",
+    "type": "int",
+    "hint": "只转录视频前 N 秒，控制费用与超时；默认 600，最小 30",
+    "default": 600
+  },
+  "audio_transcription_max_mb": {
+    "description": "ASR 音频大小上限（MB）",
+    "type": "int",
+    "hint": "抽取后的音频超过该大小就跳过；默认 20",
+    "default": 20
+  },
+  "audio_transcription_timeout": {
+    "description": "ASR 超时（秒）",
+    "type": "int",
+    "hint": "STT Provider 转录的超时时间；默认 120",
+    "default": 120
   },
   "include_subtitle": {
     "description": "读取字幕",

@@ -187,6 +187,8 @@ class LoginStatus:
 class Material:
     video: VideoInfo
     subtitles: list[tuple[float, str]] = field(default_factory=list)
+    subtitle_source: str = "official"
+    audio_transcript_partial: bool = False
     comments: list[CommentItem] = field(default_factory=list)
     danmaku_peaks: list[float] = field(default_factory=list)
     danmaku_keywords: list[tuple[float, str]] = field(default_factory=list)
@@ -195,6 +197,13 @@ class Material:
     frame_times: list[float] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     cached_digest: str | None = None
+
+
+@dataclass
+class StreamInfo:
+    video_url: str
+    audio_url: str
+    height: int
 
 
 class BiliClient:
@@ -445,7 +454,9 @@ class BiliClient:
 
     # -- 取流 / 截帧 ----------------------------------------------------
 
-    def get_playurl(self, bvid: str, cid: int) -> tuple[str, int]:
+    def get_stream_info(self, bvid: str, cid: int) -> StreamInfo:
+        """取视频流和音频流；没有独立音轨时 audio_url 为空。"""
+
         url = self.http.wbi_url(
             self._api("/x/player/wbi/playurl"),
             {"bvid": bvid, "cid": cid, "qn": 32, "fnval": 16, "fourk": 1},
@@ -457,19 +468,41 @@ class BiliClient:
             for item in dash.get("video") or []
             if item.get("baseUrl") or item.get("base_url")
         ]
+        video_url = ""
+        height = 0
         if videos:
             videos.sort(key=lambda item: int(item.get("height") or 0))
             chosen = next(
                 (v for v in videos if int(v.get("height") or 0) >= 360), videos[-1]
             )
-            return (
-                str(chosen.get("baseUrl") or chosen.get("base_url")),
-                int(chosen.get("height") or 0),
+            video_url = str(chosen.get("baseUrl") or chosen.get("base_url"))
+            height = int(chosen.get("height") or 0)
+        else:
+            durl = [item for item in data.get("durl") or [] if item.get("url")]
+            if durl:
+                video_url = str(durl[0]["url"])
+
+        audio_url = ""
+        audios = [
+            item
+            for item in dash.get("audio") or []
+            if item.get("baseUrl") or item.get("base_url")
+        ]
+        if audios:
+            # ASR 只需要清晰人声，选低码率音轨以减少下载量。
+            audios.sort(key=lambda item: int(item.get("bandwidth") or 0))
+            audio_url = str(
+                audios[0].get("baseUrl") or audios[0].get("base_url")
             )
-        durl = [item for item in data.get("durl") or [] if item.get("url")]
-        if durl:
-            return str(durl[0]["url"]), 0
-        raise BiliError("no_stream", "播放接口没有返回可用视频流")
+        if not video_url:
+            raise BiliError("no_stream", "播放接口没有返回可用视频流")
+        return StreamInfo(video_url=video_url, audio_url=audio_url, height=height)
+
+    def get_playurl(self, bvid: str, cid: int) -> tuple[str, int]:
+        """兼容旧调用：只返回视频流和高度。"""
+
+        info = self.get_stream_info(bvid, cid)
+        return info.video_url, info.height
 
     def _ffmpeg_exe(self) -> str:
         if self._ffmpeg:
@@ -565,6 +598,62 @@ class BiliClient:
             if out.exists() and out.stat().st_size <= max_mb * 1024 * 1024:
                 frames.append((out, seconds))
         return frames
+
+    def extract_audio(
+        self,
+        stream_url: str,
+        output_path: Path,
+        max_seconds: int = 600,
+        max_mb: float = 20.0,
+        referer: str = "https://www.bilibili.com/",
+    ) -> bool:
+        """从 B站流抽取轻量单声道音频，供 STT 使用。
+
+        统一转成 16kHz / 单声道 / 32kbps mp3；没有独立音轨时也可直接传视频流。
+        """
+
+        if not isinstance(stream_url, str) or not stream_url.startswith(
+            ("http://", "https://")
+        ):
+            return False
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        headers = (
+            f"Referer: {referer}\r\n"
+            f"User-Agent: {self.http._headers.get('User-Agent', '')}\r\n"
+        )
+        cmd = [
+            self._ffmpeg_exe(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-headers",
+            headers,
+            "-i",
+            stream_url,
+            "-t",
+            str(max(1, int(max_seconds))),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-b:a",
+            "32k",
+            "-y",
+            str(output_path),
+        ]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, timeout=90)
+        except Exception:
+            output_path.unlink(missing_ok=True)
+            return False
+        if not output_path.exists() or output_path.stat().st_size <= 0:
+            return False
+        if output_path.stat().st_size > max_mb * 1024 * 1024:
+            output_path.unlink(missing_ok=True)
+            return False
+        return True
 
     # -- UP -------------------------------------------------------------
 
