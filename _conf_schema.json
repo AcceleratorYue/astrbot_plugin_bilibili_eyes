@@ -160,8 +160,18 @@
   "audio_transcription_enabled": {
     "description": "音频转录（ASR）",
     "type": "bool",
-    "hint": "没有官方字幕时，用 AstrBot 已配置的 STT Provider 转录音频；默认关闭",
+    "hint": "总开关；开启后按模式使用 AstrBot 已配置的 STT Provider 转录音频",
     "default": false
+  },
+  "audio_transcription_mode": {
+    "description": "ASR 启用模式",
+    "type": "string",
+    "hint": "no_subtitle = 无官方字幕时才启用；always = 常开，有官方字幕也转录（官方字幕保留，ASR 作为补充）",
+    "options": [
+      "no_subtitle",
+      "always"
+    ],
+    "default": "no_subtitle"
   },
   "audio_transcription_provider_id": {
     "description": "ASR Provider ID",

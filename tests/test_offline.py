@@ -572,7 +572,31 @@ def test_audio_pipeline() -> None:
         assert not (Path(tmp) / "cache").exists() or not list(
             (Path(tmp) / "cache").glob("*.mp3")
         )
-    print("✅ ASR：无字幕时接入 / 临时音频清理")
+
+        plugin._config["audio_transcription_mode"] = "always"
+        material_with_subtitle = bc.Material(video=video)
+        material_with_subtitle.subtitles = [(0.0, "官方字幕")]
+        asyncio.run(
+            plugin._transcribe_audio_if_needed(
+                material_with_subtitle, event, SimpleNamespace(stage="")
+            )
+        )
+        assert material_with_subtitle.subtitles == [(0.0, "官方字幕")]
+        assert material_with_subtitle.asr_subtitles
+        assert material_with_subtitle.subtitle_source == "official"
+        assert any("常开" in item for item in material_with_subtitle.warnings)
+
+        plugin._config["audio_transcription_mode"] = "no_subtitle"
+        skipped = bc.Material(video=video)
+        skipped.subtitles = [(0.0, "官方字幕")]
+        asyncio.run(
+            plugin._transcribe_audio_if_needed(
+                skipped, event, SimpleNamespace(stage="")
+            )
+        )
+        assert skipped.asr_subtitles == []
+        assert skipped.subtitles == [(0.0, "官方字幕")]
+    print("✅ ASR：无字幕接入 / 常开补充 / 默认跳过有字幕 / 临时音频清理")
 
 
 def test_schema() -> None:
@@ -590,6 +614,7 @@ def test_schema() -> None:
         "wait_notice_template",
         "cache_ttl_hours",
         "audio_transcription_enabled",
+        "audio_transcription_mode",
         "audio_transcription_provider_id",
         "audio_transcription_max_seconds",
         "audio_transcription_max_mb",
@@ -598,10 +623,11 @@ def test_schema() -> None:
     assert required <= set(schema), required - set(schema)
     assert schema["frame_count"]["default"] == 12
     assert schema["nl_trigger_enabled"]["default"] is True
+    assert schema["audio_transcription_mode"]["default"] == "no_subtitle"
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.6.0" in meta
+    assert "version: 0.6.1" in meta
     print("✅ 配置 schema / metadata")
 
 

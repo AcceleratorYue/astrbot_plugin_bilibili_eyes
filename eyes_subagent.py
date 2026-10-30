@@ -180,6 +180,12 @@ def build_material_prompt(
             )
     else:
         parts.append("字幕：没有可用字幕（不要编造台词，只能依据画面与简介）。")
+    asr_text = format_subtitles(getattr(material, "asr_subtitles", []))
+    if asr_text:
+        parts.append(
+            "音频转录（ASR，独立于官方字幕，可能与字幕重复；时间戳为估算）：\n"
+            + asr_text
+        )
     pinned_text = "\n".join(
         f"- {normalize_quotes(str(item.content))}"
         for item in material.comments

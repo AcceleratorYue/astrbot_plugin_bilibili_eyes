@@ -74,6 +74,7 @@ DEFAULT_OPTIONS: dict = {
     "subagent_timeout": 180,
     "subagent_retries": 1,
     "audio_transcription_enabled": False,
+    "audio_transcription_mode": "no_subtitle",
     "audio_transcription_provider_id": "",
     "audio_transcription_max_seconds": 600,
     "audio_transcription_max_mb": 20,
@@ -160,7 +161,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.6.0 已加载")
+        logger.info(f"{LOG} 插件 v0.6.1 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -777,7 +778,13 @@ class BilibiliEyesPlugin(Star):
             provider_id = str(
                 self._opt("audio_transcription_provider_id") or ""
             ).strip()
-            text += f"\n音频转录：开（{provider_id or '当前会话 STT'}）"
+            mode = str(
+                self._opt("audio_transcription_mode") or "no_subtitle"
+            ).strip()
+            mode_text = "常开" if mode == "always" else "仅无字幕"
+            text += (
+                f"\n音频转录：开（{provider_id or '当前会话 STT'} / {mode_text}）"
+            )
         else:
             text += "\n音频转录：关"
         await self._reply_now(event, text)
@@ -1098,11 +1105,18 @@ class BilibiliEyesPlugin(Star):
     async def _transcribe_audio_if_needed(
         self, material: bc.Material, event, job: Job
     ) -> None:
-        """无官方字幕时，用 AstrBot STT 补一段音频转写。"""
+        """按模式用 AstrBot STT 补音频转写。"""
 
         if not self._bool_opt("audio_transcription_enabled"):
             return
-        if not self._bool_opt("include_subtitle") or material.subtitles:
+        mode = str(
+            self._opt("audio_transcription_mode") or "no_subtitle"
+        ).strip().lower()
+        if mode not in ("no_subtitle", "always"):
+            mode = "no_subtitle"
+        if not self._bool_opt("include_subtitle"):
+            return
+        if material.subtitles and mode != "always":
             return
         duration = int(material.video.duration or 0)
         if duration <= 0:
@@ -1153,18 +1167,33 @@ class BilibiliEyesPlugin(Star):
             if not subtitles:
                 material.warnings.append("音频转录完成，但没有识别出有效语音")
                 return
-            material.subtitles = ec.merge_subtitles(subtitles)
-            material.subtitle_source = "asr"
+            merged = ec.merge_subtitles(subtitles)
             material.audio_transcript_partial = transcribed_seconds < duration
-            note = f"字幕来源：ASR 音频转录（约 {transcribed_seconds} 秒"
-            if material.audio_transcript_partial:
-                note += "，仅视频前段"
-            note += "；时间戳为估算）"
-            material.warnings.append(note)
-            logger.info(
-                f"{LOG} ASR 完成：{material.video.bvid} "
-                f"{len(material.subtitles)} 句 / {transcribed_seconds}s"
-            )
+            if material.subtitles:
+                # 常开模式：官方字幕保留，ASR 作为独立补充材料。
+                material.asr_subtitles = merged
+                note = (
+                    f"音频转录（常开）：约 {transcribed_seconds} 秒"
+                    + ("，仅视频前段" if material.audio_transcript_partial else "")
+                    + "；作为官方字幕的补充，时间戳为估算"
+                )
+                material.warnings.append(note)
+                logger.info(
+                    f"{LOG} ASR 补充完成：{material.video.bvid} "
+                    f"{len(merged)} 句 / {transcribed_seconds}s"
+                )
+            else:
+                material.subtitles = merged
+                material.subtitle_source = "asr"
+                note = f"字幕来源：ASR 音频转录（约 {transcribed_seconds} 秒"
+                if material.audio_transcript_partial:
+                    note += "，仅视频前段"
+                note += "；时间戳为估算）"
+                material.warnings.append(note)
+                logger.info(
+                    f"{LOG} ASR 完成：{material.video.bvid} "
+                    f"{len(material.subtitles)} 句 / {transcribed_seconds}s"
+                )
         except asyncio.TimeoutError:
             material.warnings.append("音频转录超时，已跳过")
             logger.warning(f"{LOG} ASR 超时：{material.video.bvid}")
@@ -1418,6 +1447,11 @@ class BilibiliEyesPlugin(Star):
             lines.append(
                 "字幕摘录："
                 + " ".join(content for _, content in material.subtitles[:20])[:1200]
+            )
+        if getattr(material, "asr_subtitles", None):
+            lines.append(
+                "音频转录补充："
+                + " ".join(content for _, content in material.asr_subtitles[:20])[:800]
             )
         if material.comments:
             lines.append(

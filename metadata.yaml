@@ -7,7 +7,7 @@ desc: >-
   支持视频信息、播放数据、字幕、评论、UP 主页、热点选帧、卡片转链、追问、
   按时间点截图、等待提示、笔记缓存；无官方字幕时可选用 AstrBot 已配置的
   STT Provider 做音频转录。
-version: 0.6.0
+version: 0.6.1
 author: AcceleratorYue
 repo: https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes
 social_link: https://github.com/AcceleratorYue

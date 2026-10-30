@@ -188,6 +188,7 @@ class Material:
     video: VideoInfo
     subtitles: list[tuple[float, str]] = field(default_factory=list)
     subtitle_source: str = "official"
+    asr_subtitles: list[tuple[float, str]] = field(default_factory=list)
     audio_transcript_partial: bool = False
     comments: list[CommentItem] = field(default_factory=list)
     danmaku_peaks: list[float] = field(default_factory=list)
