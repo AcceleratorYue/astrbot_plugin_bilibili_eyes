@@ -30,6 +30,7 @@ from astrbot.api.message_components import Plain
 from astrbot.api.star import Context, Star
 from astrbot.core.message.message_event_result import MessageChain
 
+import eyes_audio
 import eyes_clean as ec
 import eyes_client as bc
 import eyes_subagent as sa
@@ -73,6 +74,10 @@ DEFAULT_OPTIONS: dict = {
     "subagent_timeout": 180,
     "subagent_retries": 1,
     "audio_transcription_enabled": False,
+    "audio_transcription_provider_id": "",
+    "audio_transcription_max_seconds": 600,
+    "audio_transcription_max_mb": 20,
+    "audio_transcription_timeout": 120,
     "include_subtitle": True,
     "subtitle_langs": "zh-Hans,zh,ai-zh,en",
     "include_description": True,
@@ -155,7 +160,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.5.13 已加载")
+        logger.info(f"{LOG} 插件 v0.6.0 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -768,6 +773,13 @@ class BilibiliEyesPlugin(Star):
                 f"❌ SESSDATA 无效或已过期（{status.message or '账号未登录'}）。\n"
                 "请重新获取 SESSDATA 并填入配置。"
             )
+        if self._bool_opt("audio_transcription_enabled"):
+            provider_id = str(
+                self._opt("audio_transcription_provider_id") or ""
+            ).strip()
+            text += f"\n音频转录：开（{provider_id or '当前会话 STT'}）"
+        else:
+            text += "\n音频转录：关"
         await self._reply_now(event, text)
         logger.info(f"{LOG} bili状态 完成 {time.monotonic() - started:.2f}s")
 
@@ -1007,7 +1019,7 @@ class BilibiliEyesPlugin(Star):
             if hit and time.monotonic() - hit[0] <= VIDEO_RESULT_TTL_SECONDS:
                 logger.info(f"{LOG} single-flight 复用：{key}")
                 return hit[1], hit[2]
-            material = await self._collect(job, ref, page)
+            material = await self._collect(job, ref, page, event)
             digest = await self._digest(material, event)
             self._video_results[key] = (time.monotonic(), material, digest)
             self._prune_video_results()
@@ -1056,7 +1068,118 @@ class BilibiliEyesPlugin(Star):
             template=template,
         )
 
-    async def _collect(self, job: Job, ref: str, page: int | None) -> bc.Material:
+    async def _get_stt_provider(self, event=None):
+        """按配置选择 AstrBot STT Provider；空配置跟随当前会话。"""
+
+        get_all = getattr(self.context, "get_all_stt_providers", None)
+        providers = list(get_all() or []) if callable(get_all) else []
+        wanted = str(self._opt("audio_transcription_provider_id") or "").strip()
+        if wanted:
+            for provider in providers:
+                try:
+                    meta = provider.meta()
+                    provider_id = str(getattr(meta, "id", "") or "")
+                except Exception:
+                    provider_id = ""
+                if provider_id == wanted:
+                    return provider
+            return None
+        if event is not None:
+            get_current = getattr(
+                self.context, "get_using_stt_provider_async", None
+            )
+            if callable(get_current):
+                try:
+                    return await get_current(umo=event.unified_msg_origin)
+                except Exception as exc:
+                    logger.warning(f"{LOG} 获取当前 STT Provider 失败：{exc}")
+        return providers[0] if providers else None
+
+    async def _transcribe_audio_if_needed(
+        self, material: bc.Material, event, job: Job
+    ) -> None:
+        """无官方字幕时，用 AstrBot STT 补一段音频转写。"""
+
+        if not self._bool_opt("audio_transcription_enabled"):
+            return
+        if not self._bool_opt("include_subtitle") or material.subtitles:
+            return
+        duration = int(material.video.duration or 0)
+        if duration <= 0:
+            material.warnings.append("音频转录跳过：视频时长未知")
+            return
+        max_seconds = max(30, self._int_opt("audio_transcription_max_seconds", 600))
+        transcribed_seconds = min(duration, max_seconds)
+        provider = await self._get_stt_provider(event)
+        if provider is None:
+            material.warnings.append(
+                "音频转录已开启，但没有可用的 STT Provider（请先在 AstrBot 配置语音转文字）"
+            )
+            return
+        job.stage = "音频转录"
+        client = self._client()
+        audio_path = (
+            self._data_dir()
+            / "cache"
+            / f"asr_{material.video.bvid}_{material.video.cid}.mp3"
+        )
+        try:
+            info = await self._run(
+                client.get_stream_info,
+                material.video.bvid,
+                material.video.cid,
+            )
+            source = info.audio_url or info.video_url
+            if not source:
+                material.warnings.append("音频转录跳过：没有可用的音频流")
+                return
+            ok = await self._run(
+                client.extract_audio,
+                source,
+                audio_path,
+                transcribed_seconds,
+                float(self._int_opt("audio_transcription_max_mb", 20)),
+            )
+            if not ok:
+                material.warnings.append("音频转录跳过：音频抽取失败")
+                return
+            transcriber = eyes_audio.AudioTranscriber(provider)
+            subtitles = await asyncio.wait_for(
+                transcriber.transcribe(
+                    audio_path, duration=float(transcribed_seconds)
+                ),
+                timeout=max(10, self._int_opt("audio_transcription_timeout", 120)),
+            )
+            if not subtitles:
+                material.warnings.append("音频转录完成，但没有识别出有效语音")
+                return
+            material.subtitles = ec.merge_subtitles(subtitles)
+            material.subtitle_source = "asr"
+            material.audio_transcript_partial = transcribed_seconds < duration
+            note = f"字幕来源：ASR 音频转录（约 {transcribed_seconds} 秒"
+            if material.audio_transcript_partial:
+                note += "，仅视频前段"
+            note += "；时间戳为估算）"
+            material.warnings.append(note)
+            logger.info(
+                f"{LOG} ASR 完成：{material.video.bvid} "
+                f"{len(material.subtitles)} 句 / {transcribed_seconds}s"
+            )
+        except asyncio.TimeoutError:
+            material.warnings.append("音频转录超时，已跳过")
+            logger.warning(f"{LOG} ASR 超时：{material.video.bvid}")
+        except eyes_audio.AudioTranscriberError as exc:
+            logger.warning(f"{LOG} ASR 失败：{exc.reason} {exc.detail}")
+            material.warnings.append("音频转录失败，已跳过")
+        except Exception as exc:
+            logger.warning(f"{LOG} ASR 异常：{exc}")
+            material.warnings.append("音频转录失败，已跳过")
+        finally:
+            audio_path.unlink(missing_ok=True)
+
+    async def _collect(
+        self, job: Job, ref: str, page: int | None, event=None
+    ) -> bc.Material:
         client = self._client()
         video = await self._run(client.get_video, ref, page)
         job.bvid = video.bvid
@@ -1066,8 +1189,6 @@ class BilibiliEyesPlugin(Star):
             raise bc.BiliError("too_long", f"视频时长 {video.duration}s")
         material = bc.Material(video=video)
         material.video.desc = ec.clean_description(material.video.desc)
-        if self._bool_opt("audio_transcription_enabled"):
-            material.warnings.append("音频转录接口未实现（仅保留桩）")
         if not self._bool_opt("include_description"):
             material.video.desc = ""
         if self._cache is not None:
@@ -1104,6 +1225,7 @@ class BilibiliEyesPlugin(Star):
                     material.warnings.append("无可用字幕（可能是游客态或视频本身无字幕）")
         except bc.BiliError as exc:
             material.warnings.append(f"播放器信息不可用：{exc.reason}")
+        await self._transcribe_audio_if_needed(material, event, job)
         if self._bool_opt("include_comments"):
             job.stage = "取评论"
             try:

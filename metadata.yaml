@@ -5,8 +5,9 @@ desc: >-
   让主模型通过子代理“看” B 站内容：子代理在隔离上下文里读取字幕/简介/评论、
   抽取 12 帧关键画面并整理成客观笔记，主模型拿笔记后用自己的判断和语气回复。
   支持视频信息、播放数据、字幕、评论、UP 主页、热点选帧、卡片转链、追问、
-  按时间点截图、等待提示与笔记缓存。
-version: 0.5.13
+  按时间点截图、等待提示、笔记缓存；无官方字幕时可选用 AstrBot 已配置的
+  STT Provider 做音频转录。
+version: 0.6.0
 author: AcceleratorYue
 repo: https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes
 social_link: https://github.com/AcceleratorYue

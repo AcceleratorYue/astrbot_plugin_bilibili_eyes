@@ -336,7 +336,25 @@ def test_http_mock_parsing() -> None:
     client.http.get_json = lambda *args, **kwargs: {"code": 0, "data": comment_payload}
     comments = client.get_comments(100, limit=12, include_pinned=True)
     assert comments[0].pinned and comments[0].content == "置顶评论"
-    print("✅ HTTP mock：视频 stat / 置顶评论解析")
+
+    client.http.wbi_url = lambda path, params: "https://example.invalid/playurl"
+    client.http.get_json = lambda *args, **kwargs: {
+        "code": 0,
+        "data": {
+            "dash": {
+                "video": [{"baseUrl": "https://example.invalid/v", "height": 480}],
+                "audio": [
+                    {"baseUrl": "https://example.invalid/high", "bandwidth": 128000},
+                    {"baseUrl": "https://example.invalid/low", "bandwidth": 64000},
+                ],
+            }
+        },
+    }
+    streams = client.get_stream_info("BV1mock", 200)
+    assert streams.video_url.endswith("/v")
+    assert streams.audio_url.endswith("/low")
+    assert client.get_playurl("BV1mock", 200)[0].endswith("/v")
+    print("✅ HTTP mock：视频 stat / 置顶评论 / 音频流解析")
 
 
 def test_backoff_retry() -> None:
@@ -461,17 +479,100 @@ def test_cleaning_and_dedupe() -> None:
     print("✅ 清洗：简介/字幕/评论/弹幕/帧去重")
 
 
-def test_audio_stub() -> None:
-    async def call() -> None:
-        await eyes_audio.AudioTranscriber().transcribe(Path("x.mp3"))
+def test_audio_transcriber() -> None:
+    class FakeProvider:
+        async def get_text(self, path: str) -> str:
+            assert Path(path).exists()
+            return "请不吝点赞。第一句台词。第二句台词！"
 
-    try:
-        asyncio.run(call())
-    except NotImplementedError:
-        pass
-    else:
-        raise AssertionError("音频接口桩应抛 NotImplementedError")
-    print("✅ 音频转录接口桩")
+    with tempfile.TemporaryDirectory() as tmp:
+        audio = Path(tmp) / "a.mp3"
+        audio.write_bytes(b"fake-audio")
+        subs = asyncio.run(
+            eyes_audio.AudioTranscriber(FakeProvider()).transcribe(
+                audio, duration=12
+            )
+        )
+    assert subs and subs[0][0] == 0
+    assert "请不吝点赞" not in "".join(text for _t, text in subs)
+    assert 0 <= subs[-1][0] <= 12
+    assert "第一句台词" in "".join(text for _t, text in subs)
+    assert eyes_audio.text_to_subtitles("", 10) == []
+    print("✅ ASR：文本清洗 / 断句 / 近似时间轴")
+
+
+def test_audio_pipeline() -> None:
+    import main as plugin_main
+
+    class FakeProvider:
+        async def get_text(self, path: str) -> str:
+            return "第一句。第二句！"
+
+    class FakeContext:
+        def get_all_stt_providers(self):
+            return [FakeProvider()]
+
+        async def get_using_stt_provider_async(self, umo=None):
+            return FakeProvider()
+
+    class FakeClient:
+        def __init__(self):
+            self.extract_args = None
+
+        def get_stream_info(self, bvid, cid):
+            return bc.StreamInfo(
+                video_url="https://example.com/v.mp4",
+                audio_url="https://example.com/a.m4s",
+                height=480,
+            )
+
+        def extract_audio(self, url, path, max_seconds, max_mb):
+            self.extract_args = (url, max_seconds, max_mb)
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"fake-audio")
+            return True
+
+    with tempfile.TemporaryDirectory() as tmp:
+        plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+        plugin._config = {
+            **plugin_main.DEFAULT_OPTIONS,
+            "audio_transcription_enabled": True,
+            "include_subtitle": True,
+            "cache_enabled": False,
+        }
+        plugin.context = FakeContext()
+        fake_client = FakeClient()
+        plugin._client = lambda: fake_client
+        plugin._data_dir = lambda: Path(tmp)
+
+        async def run(func, *args):
+            return func(*args)
+
+        plugin._run = run
+        video = bc.VideoInfo(
+            bvid="BV1asr",
+            aid=1,
+            cid=2,
+            page=1,
+            page_count=1,
+            title="ASR 测试",
+            up_name="UP",
+            up_uid=1,
+            duration=30,
+            desc="",
+        )
+        material = bc.Material(video=video)
+        job = SimpleNamespace(stage="")
+        event = SimpleNamespace(unified_msg_origin="test:GroupMessage:1")
+        asyncio.run(plugin._transcribe_audio_if_needed(material, event, job))
+        assert material.subtitle_source == "asr"
+        assert material.subtitles
+        assert fake_client.extract_args[1] == 30
+        assert job.stage == "音频转录"
+        assert not (Path(tmp) / "cache").exists() or not list(
+            (Path(tmp) / "cache").glob("*.mp3")
+        )
+    print("✅ ASR：无字幕时接入 / 临时音频清理")
 
 
 def test_schema() -> None:
@@ -488,6 +589,11 @@ def test_schema() -> None:
         "digest_max_chars",
         "wait_notice_template",
         "cache_ttl_hours",
+        "audio_transcription_enabled",
+        "audio_transcription_provider_id",
+        "audio_transcription_max_seconds",
+        "audio_transcription_max_mb",
+        "audio_transcription_timeout",
     }
     assert required <= set(schema), required - set(schema)
     assert schema["frame_count"]["default"] == 12
@@ -495,7 +601,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.5.13" in meta
+    assert "version: 0.6.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -543,7 +649,8 @@ def main() -> int:
     test_cleaning_and_dedupe()
     test_backoff_retry()
     test_frame_tool()
-    test_audio_stub()
+    test_audio_transcriber()
+    test_audio_pipeline()
     test_schema()
     print("\n全部离线测试通过")
     return 0

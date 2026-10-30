@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.5.13>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.6.0>
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
 
@@ -13,7 +13,7 @@
 
 ## 状态
 
-- ✅ Phase 1（v0.5.13）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
+- ✅ Phase 1（v0.6.0）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
 - 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
 - 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
 - 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
@@ -55,6 +55,7 @@
 - 🐳 v0.5.11：对齐人格提示词，一两句话、能短就短，禁止追剧式表达
 - 📄 v0.5.12：文档表述泛化，移除具体角色名与角色化示例
 - 🧩 v0.5.13：内置回传提示词改为无个人人格倾向的通用版本
+- 🎙️ v0.6.0：无官方字幕时可用 AstrBot 内置 STT 做音频转录
 - ⏳ Phase 3：工程化与更多测试
 
 ## 触发方式
@@ -80,6 +81,11 @@
 | 配置 | 默认 | 说明 |
 | --- | --- | --- |
 | `sessdata` | **必填** | B 站登录态；**不填会导致插件工作异常**：无字幕、评论少、UP 主页/近期投稿易风控、查询失败 |
+| `audio_transcription_enabled` | 关 | 无官方字幕时，用 AstrBot 的 STT Provider 转录音频补字幕 |
+| `audio_transcription_provider_id` | 空 | 指定 STT Provider ID；空=当前会话 STT |
+| `audio_transcription_max_seconds` | 600 | 最多转录视频前 N 秒 |
+| `audio_transcription_max_mb` | 20 | 抽取音频的大小上限 |
+| `audio_transcription_timeout` | 120 | STT 转录超时（秒） |
 | `vision_provider_id` | 空 | 空 = 跟随主模型；主模型无视觉则不截帧（文本笔记）。也可指定支持图片的 provider |
 | `nl_trigger_enabled` | 开 | 视频自然语言触发（UP 主只用 `/看主页`） |
 | `user_daily_quota` | 20 | 每用户每日次数；0=不限制 |
@@ -124,7 +130,7 @@
 ## 工作流程
 
 1. @ 消息含 B 站链接 → 识别 BV / 分 P / 多链接（只处理第一个）；
-2. 子代理阶段：取视频信息 → 字幕（无字幕降级）→ 热评 → 弹幕密度选热点时间 → 截 12 帧；
+2. 子代理阶段：取视频信息 → 字幕（无字幕时可选 ASR 补转录）→ 热评 → 弹幕密度选热点时间 → 截 12 帧；
 3. 子代理（视觉 provider）看 12 帧 + 字幕/评论，输出客观笔记（不评价、不脑补、带不确定项）；
 4. 主模型收到笔记，用自己的身份和语气回复（多链接时说明只看了第一个）；
 5. 笔记按 BV+分P 缓存 7 天；观看期间再次唤醒 → 发送等待提示（含已工作时间/阶段）；
@@ -177,9 +183,27 @@
 情绪随内容自然变化，不强行积极或深沉；不主动报时长、不编造细节。
 用户没有明确要求时，不主动展开完整总结；只有问“讲了什么/总结一下”时再概括。**
 
+## 音频转录（ASR）
+
+开启 `audio_transcription_enabled` 后，遇到**没有官方字幕**的视频，会：
+
+1. 从播放地址取音频流；
+2. 用 ffmpeg 抽成 16kHz / 单声道 / 32kbps 的临时 mp3；
+3. 调用 AstrBot 已配置的 STT Provider 转录；
+4. 清洗 ASR 幻觉、复读和空句，按标点断句；
+5. 写回字幕材料，继续走原有笔记流程。
+
+注意：
+
+- 只转录视频前 `audio_transcription_max_seconds` 秒，默认 600 秒；
+- ASR 没有逐句时间戳，插件会按字数做**近似时间轴**，仅用于排序和选帧；
+- 视频被截断时会在笔记里标注“仅视频前段”；
+- 音频会发送给所选 STT 服务商，开启前请确认隐私与费用；
+- 没有可用 STT Provider、抽取失败或超时时会平滑跳过，不阻塞观看。
+
 ## 已知限制
 
-- 不做 ASR（音频转录只留配置与函数桩）；
+- ASR 依赖 AstrBot 已配置的 STT Provider，未配置时自动跳过；
 - 字幕依赖登录态（`need_login_subtitle`），游客多为无字幕；
 - 游客最高 360P（截帧仍够辨认）；
 - 不做长期记忆（只做插件本地笔记缓存）；
