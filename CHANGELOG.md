@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.1 (2026-10-30)
+
+ASR 增加启用模式。
+
+- 新增 `audio_transcription_mode`：
+  - `no_subtitle`：默认，仅无官方字幕时启用 ASR；
+  - `always`：常开，有官方字幕也转录。
+- 常开模式下保留官方字幕，ASR 作为独立补充材料进入笔记；
+- `/bili状态` 显示 ASR 模式；
+- 补充模式测试。
+
 ## 0.6.0 (2026-10-30)
 
 补全音频转录（ASR）P0，复用 AstrBot 内置 STT Provider。

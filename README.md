@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.6.0>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.6.1>
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
 
@@ -13,7 +13,7 @@
 
 ## 状态
 
-- ✅ Phase 1（v0.6.0）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
+- ✅ Phase 1（v0.6.1）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
 - 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
 - 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
 - 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
@@ -56,6 +56,7 @@
 - 📄 v0.5.12：文档表述泛化，移除具体角色名与角色化示例
 - 🧩 v0.5.13：内置回传提示词改为无个人人格倾向的通用版本
 - 🎙️ v0.6.0：无官方字幕时可用 AstrBot 内置 STT 做音频转录
+- 🔀 v0.6.1：ASR 增加“仅无字幕 / 常开”模式
 - ⏳ Phase 3：工程化与更多测试
 
 ## 触发方式
@@ -81,7 +82,8 @@
 | 配置 | 默认 | 说明 |
 | --- | --- | --- |
 | `sessdata` | **必填** | B 站登录态；**不填会导致插件工作异常**：无字幕、评论少、UP 主页/近期投稿易风控、查询失败 |
-| `audio_transcription_enabled` | 关 | 无官方字幕时，用 AstrBot 的 STT Provider 转录音频补字幕 |
+| `audio_transcription_enabled` | 关 | 用 AstrBot 的 STT Provider 转录音频补字幕 |
+| `audio_transcription_mode` | no_subtitle | no_subtitle=仅无字幕时启用；always=常开，有字幕也转录 |
 | `audio_transcription_provider_id` | 空 | 指定 STT Provider ID；空=当前会话 STT |
 | `audio_transcription_max_seconds` | 600 | 最多转录视频前 N 秒 |
 | `audio_transcription_max_mb` | 20 | 抽取音频的大小上限 |
@@ -185,13 +187,20 @@
 
 ## 音频转录（ASR）
 
-开启 `audio_transcription_enabled` 后，遇到**没有官方字幕**的视频，会：
+开启 `audio_transcription_enabled` 后，会按模式判断是否需要转录：
 
-1. 从播放地址取音频流；
-2. 用 ffmpeg 抽成 16kHz / 单声道 / 32kbps 的临时 mp3；
-3. 调用 AstrBot 已配置的 STT Provider 转录；
-4. 清洗 ASR 幻觉、复读和空句，按标点断句；
-5. 写回字幕材料，继续走原有笔记流程。
+1. 按 `audio_transcription_mode` 判断是否启用；
+2. 从播放地址取音频流；
+3. 用 ffmpeg 抽成 16kHz / 单声道 / 32kbps 的临时 mp3；
+4. 调用 AstrBot 已配置的 STT Provider 转录；
+5. 清洗 ASR 幻觉、复读和空句，按标点断句；
+6. 写回字幕材料，继续走原有笔记流程。
+
+模式：
+
+- `no_subtitle`（默认）：只有官方字幕为空时才跑 ASR；
+- `always`：不管有没有官方字幕都跑 ASR。  
+  有官方字幕时**官方字幕保留**，ASR 作为独立补充材料进入笔记，避免用低质量转录直接覆盖官方字幕。
 
 注意：
 
