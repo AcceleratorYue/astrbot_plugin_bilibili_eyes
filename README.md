@@ -2,6 +2,7 @@
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
 > 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.7.0>
+> License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
 
@@ -11,54 +12,14 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 状态
+## 当前版本 v0.7.0
 
-- ✅ Phase 1（v0.7.0）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
-- 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
-- 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
-- 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
-- 🩺 v0.1.4：新增 `/bili状态`，检查 SESSDATA 是否有效并显示 UID/昵称
-- 🔧 v0.1.5：修复热重载后仍使用旧 `eyes_client` 导致 `/bili状态` 报 `no attribute 'check_login'`
-- ⚡ v0.1.6：纯指令回复不再额外触发 LLM，`/bili状态` 等立即返回，不再排队到 `/stop` 之后
-- 🩺 v0.1.7：`/bili状态` 改为直接发送并记录耗时；实测 nav 0.2~0.3s
-- ⏱️ v0.1.8：`/bili状态` 改为同步 nav，绕开默认线程池排队
-- 🧵 v0.1.9：抓取/截帧/UP 查询全部改用插件独立线程池 `worker_threads`
-- 🌐 v0.2.0：B 站 API 强制 IPv4，修复无 IPv6 出口时 urllib 逐个 IPv6 超时导致的 40~80 秒延迟
-- 🎯 v0.2.1：UP 主只允许 `/看主页` 指令，移除自然语言触发与 `bilibili_up` 工具；回复强制带 UP 名字
-- ✍️ v0.2.2：子代理笔记统一使用全角引号“”，避免主模型引用时残留半角引号
-- 🗂️ v0.2.4：恢复 UP 主页「近期投稿」；README 明确标注 SESSDATA 必填
-- 🔎 v0.2.5：`/看主页` 支持 `uid:xxx`、`UID：xxx`、`uid xxx`、`uidxxx` 等宽容输入
-- 🛡️ v0.2.6：近期投稿抗 412（WBI 30s、随机 dm 参数、空间 Referer）+ 第三方兜底（只发 UID）
-- 🧹 v0.2.7：P0 收尾（配置清理、发布时间/置顶评论、UP 来源日志、SESSDATA 提醒）
-- 🗣️ v0.2.8：主模型不再暴露「笔记/子代理」来源，像刚看完视频一样直接回答
-- 💬 v0.2.9：30 分钟内追问自动带上当时的摘要（含置顶评论原文），不用重新看
-- 📊 v0.2.10：补播放量/弹幕/评论/点赞/投币/收藏/转发数据
-- ✅ Phase 2（v0.3.0）：会话材料缓存 30 分钟、`bilibili_ask` 追问、`bilibili_frame` 截图、联系图模式
-- 🧷 v0.3.1：长视频笔记按段落截断，优先保留评论区/置顶/不确定项
-- 🔁 v0.3.2：UP 介绍更自然、每日额度管理员/白名单豁免、插件名改为「B站之眼」
-- 🃏 v0.3.3：B站小程序卡片自动转链（@bot + 卡片、`/看视频` + 卡片）
-- 🧷 v0.3.4：支持「引用卡片 + @bot」（卡片在 Reply.chain 里）
-- ⚙️ v0.4.0：P2 工程化（single-flight、412 指数退避、HTTP mock、发布检查表）
-- 🎞️ v0.4.1：字幕高信息段选帧、联系图时间标注、音频接口桩
-- 🚀 v0.4.2：补齐插件市场元数据（repo/tags/平台），准备发布
-- 🧼 v0.5.0：简介/字幕/评论/弹幕清洗 + 帧去重，减少垃圾上下文
-- 🤝 v0.5.1：新增 `get_last_video` 桥接接口，供 B站之手读取上次视频
-- 🎛️ v0.5.2：子代理/回传提示词可自定义；默认回复不再强制总结
-- 🚫 v0.5.3：默认提示词禁用「这段我看了」等总结式开头
-- 🔧 v0.5.4：市场审查修复：`eyes_wbi` 日志改用 `astrbot.api.logger`；`/bili状态` 的 nav 改走插件线程池
-- 🧹 v0.5.5：清理失效代码/未使用配置（`get_danmaku_peaks`、`today_key`、未使用导入、`audio_transcription_provider_id`、`ffmpeg_path`）
-- 🎬 v0.5.6：回复开头先给一句活泼的“看完啦”反馈，再进入内容
-- 🚫 v0.5.7：去掉带时长的示例，增加多种看后反馈，禁止主动报时长
-- 🎭 v0.5.8：看后反馈跟随视频情绪，不再一律活泼正向
-- 🛡️ v0.5.9：观看任务绑定触发消息，普通群聊不再消费/打断任务
-- 🗣️ v0.5.10：按当前人格重写视频回复风格，减少观后感腔
-- 🐳 v0.5.11：对齐人格提示词，一两句话、能短就短，禁止追剧式表达
-- 📄 v0.5.12：文档表述泛化，移除具体角色名与角色化示例
-- 🧩 v0.5.13：内置回传提示词改为无个人人格倾向的通用版本
-- 🎙️ v0.6.0：无官方字幕时可用 AstrBot 内置 STT 做音频转录
-- 🔀 v0.6.1：ASR 增加“仅无字幕 / 常开”模式
-- 🧠 v0.7.0：新增默认关闭的增强模式：变化选帧 + 完整 DP 装箱 + 16:9 拼图
-- ⏳ Phase 3：工程化与更多测试
+- 新增默认关闭的 **增强模式**：低分辨率变化采样、切点/积分选帧、tiers、完整 DP 装箱、16:9 拼图；
+- 增强模式默认 24 帧，笔记上限 4500 字，普通模式与钩子保持不变；
+- 无官方字幕时可使用 AstrBot STT 做音频转写（0.6.x 系列）；
+- 支持回看、追问、单帧截图、UP 主页、简介/字幕/评论/弹幕清洗、笔记缓存。
+
+[完整版本记录](CHANGELOG.md) · [增强模式方案](docs/增强模式落地方案_20261102.md) · [参考项目调研](docs/调研报告_dsh-see-now_20261102.md) · [安全策略](SECURITY.md) · [许可证](LICENSE)
 
 ## 触发方式
 
@@ -251,3 +212,20 @@ python tests/test_live_pipeline.py  # 端到端：真实 B 站 + 真实视觉模
 ```
 
 `phase0/` 下有 B 站接口/截帧/视觉的独立验证脚本与 `REPORT.md`。
+
+## 致谢
+
+本插件受益于以下项目和社区：
+
+- [dsh-see-now](https://github.com/SAOS-3624/dsh-see-now)（Apache-2.0）：增强模式的“画面变化选帧 + tiers + DP 拼图”设计参考；本项目为 Python 独立实现，未直接复制其源码。
+- [astrbot_plugin_bilibili_watch_Evolution](https://github.com/kermond369-nsis/astrbot_plugin_bilibili_watch_Evolution)：ASR / 音频处理链路的思路参考。
+- [AstrBot](https://github.com/AstrBotDevs/AstrBot)：插件框架、Provider 与事件机制。
+- B站公开接口、相关文档，以及所有测试和反馈过的朋友。
+
+本项目与 B站官方无隶属关系。
+
+## 许可证
+
+本项目使用 **MIT License**。详见 [LICENSE](LICENSE) 与 [第三方说明](THIRD_PARTY_NOTICES.md)。
+
+第三方依赖（AstrBot、imageio-ffmpeg、Pillow 等）保留各自许可证；本项目不包含它们的源码。
