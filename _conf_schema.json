@@ -121,10 +121,94 @@
     ],
     "default": "individual"
   },
-  "digest_max_chars": {
-    "description": "笔记长度上限",
+  "enhanced_mode": {
+    "description": "增强模式",
+    "type": "bool",
+    "hint": "默认关闭。开启后用画面变化选帧 + 16:9 矩形 DP 拼图；普通模式与钩子保持不变",
+    "default": false
+  },
+  "enhanced_frame_count": {
+    "description": "增强模式目标帧数",
     "type": "int",
-    "hint": "子代理输出截断上限",
+    "hint": "8~32，默认 24；会受 DP 单张拼图容量限制",
+    "default": 24
+  },
+  "enhanced_sample_fps": {
+    "description": "增强模式采样帧率",
+    "type": "int",
+    "hint": "低分辨率采样帧率，1~4；默认 2",
+    "default": 2
+  },
+  "enhanced_max_analysis_seconds": {
+    "description": "增强模式最长分析秒数",
+    "type": "int",
+    "hint": "只分析视频前 N 秒，避免超长视频 CPU 过高；默认 1200",
+    "default": 1200
+  },
+  "enhanced_cut_abs": {
+    "description": "增强选帧：切点绝对门槛",
+    "type": "int",
+    "hint": "0~255 变化分；默认 12，需按 B站素材调参",
+    "default": 12
+  },
+  "enhanced_cut_spike": {
+    "description": "增强选帧：切点尖峰倍数",
+    "type": "text",
+    "hint": "当前分 > 倍数 × 前后帧；默认 2.5",
+    "default": "2.5"
+  },
+  "enhanced_cut_min_gap": {
+    "description": "增强选帧：切点最小间隔（秒）",
+    "type": "text",
+    "hint": "默认 0.4",
+    "default": "0.4"
+  },
+  "enhanced_integral_seconds": {
+    "description": "增强选帧：积分窗口（秒）",
+    "type": "text",
+    "hint": "中等运动累计多久取一帧；默认 3",
+    "default": "3"
+  },
+  "enhanced_dup_min": {
+    "description": "增强选帧：去重阈值",
+    "type": "text",
+    "hint": "与上一保留帧的 HSV 差小于该值则丢弃；默认 8",
+    "default": "8"
+  },
+  "enhanced_silent_floor_seconds": {
+    "description": "增强选帧：静止兜底（秒）",
+    "type": "text",
+    "hint": "长时间没有新帧时补一帧；默认 20",
+    "default": "20"
+  },
+  "enhanced_sheet_width": {
+    "description": "增强拼图宽度",
+    "type": "int",
+    "hint": "默认 1280；高度按 16:9 自动计算",
+    "default": 1280
+  },
+  "enhanced_digest_max_chars": {
+    "description": "增强模式笔记长度上限",
+    "type": "int",
+    "hint": "默认 4500；仅增强模式生效",
+    "default": 4500
+  },
+  "enhanced_subagent_timeout": {
+    "description": "增强模式子代理超时（秒）",
+    "type": "int",
+    "hint": "默认 300；仅增强模式生效",
+    "default": 300
+  },
+  "enhanced_fallback_to_normal": {
+    "description": "增强失败回退普通模式",
+    "type": "bool",
+    "hint": "默认开启；增强取帧或拼图失败时回退现有普通流程",
+    "default": true
+  },
+  "digest_max_chars": {
+    "description": "普通模式笔记长度上限",
+    "type": "int",
+    "hint": "子代理输出截断上限；增强模式请用 enhanced_digest_max_chars",
     "default": 1500
   },
   "subagent_timeout": {

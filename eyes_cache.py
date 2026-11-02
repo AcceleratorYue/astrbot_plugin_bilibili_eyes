@@ -22,12 +22,15 @@ class NoteCache:
         self.version = str(version or "")
         self.directory.mkdir(parents=True, exist_ok=True)
 
-    def _path(self, bvid: str, page: int) -> Path:
+    def _path(self, bvid: str, page: int, variant: str = "") -> Path:
         suffix = f"_v{self.version}" if self.version else ""
-        return self.directory / f"{bvid}_p{int(page)}{suffix}.json"
+        variant_part = f"_{variant}" if variant else ""
+        return self.directory / f"{bvid}_p{int(page)}{variant_part}{suffix}.json"
 
-    def get(self, bvid: str, page: int) -> str | None:
-        path = self._path(bvid, page)
+    def get(
+        self, bvid: str, page: int, variant: str = ""
+    ) -> str | None:
+        path = self._path(bvid, page, variant)
         if not path.is_file():
             return None
         try:
@@ -44,7 +47,14 @@ class NoteCache:
         digest = payload.get("digest")
         return str(digest) if digest else None
 
-    def set(self, bvid: str, page: int, digest: str, meta: dict | None = None) -> None:
+    def set(
+        self,
+        bvid: str,
+        page: int,
+        digest: str,
+        meta: dict | None = None,
+        variant: str = "",
+    ) -> None:
         if not digest:
             return
         payload = {
@@ -54,7 +64,7 @@ class NoteCache:
             "created": time.time(),
             "meta": meta or {},
         }
-        path = self._path(bvid, page)
+        path = self._path(bvid, page, variant)
         try:
             path.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"

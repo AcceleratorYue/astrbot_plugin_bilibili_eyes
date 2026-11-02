@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.6.1>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.7.0>
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
 
@@ -13,7 +13,7 @@
 
 ## 状态
 
-- ✅ Phase 1（v0.6.1）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
+- ✅ Phase 1（v0.7.0）：触发、视频信息、字幕、评论、弹幕密度选帧、12 帧视觉子代理、笔记缓存、等待提示、主模型工具、UP 主页
 - 🩹 v0.1.1：修复 `/看主页` 无回复（stop_event 跳过 respond）；修复 UP 接口风控（card + buvid 搜索）
 - 🩹 v0.1.2：开始提示（先回一句话）；UP 25s / 视频 240s 超时保护
 - 🩹 v0.1.3：等待期只放行系统核心指令（stop/reset/new/stats 等白名单），其余指令与聊天一律提示并拦截，冷却 15s 防刷屏
@@ -57,6 +57,7 @@
 - 🧩 v0.5.13：内置回传提示词改为无个人人格倾向的通用版本
 - 🎙️ v0.6.0：无官方字幕时可用 AstrBot 内置 STT 做音频转录
 - 🔀 v0.6.1：ASR 增加“仅无字幕 / 常开”模式
+- 🧠 v0.7.0：新增默认关闭的增强模式：变化选帧 + 完整 DP 装箱 + 16:9 拼图
 - ⏳ Phase 3：工程化与更多测试
 
 ## 触发方式
@@ -96,6 +97,10 @@
 | `frame_count` | 12 | 子代理观看帧数（4~16） |
 | `frame_source` | hotspot | hotspot=热点+均匀保底；uniform=纯均匀 |
 | `subagent_frame_mode` | individual | individual=12 帧原图；contact_sheet_plus=1 张联系图（省 token） |
+| `enhanced_mode` | 关 | 增强模式：变化选帧 + tiers + 完整 DP 装箱 + 16:9 拼图 |
+| `enhanced_frame_count` | 24 | 增强模式目标帧数 |
+| `enhanced_digest_max_chars` | 4500 | 增强模式笔记上限（普通 1500） |
+| `enhanced_subagent_timeout` | 300 | 增强模式子代理超时 |
 | `include_pinned_comment` | 开 | 把 UP 置顶评论纳入笔记 |
 | `injection_guard` | 开 | 素材边界防提示注入 |
 | `digest_max_chars` | 1500 | 笔记上限 |
@@ -117,6 +122,24 @@
 
 > 第三方投稿兜底只发送 UID，**不会发送 SESSDATA/Cookie**；不信任第三方可把
 > `archive_fallback_enabled` 关掉，只走 B 站官方接口。
+
+## 增强模式
+
+`enhanced_mode` 默认关闭，普通模式、现有钩子、`frame_source` 和
+`subagent_frame_mode` 都不受影响。
+
+开启后：
+
+- 单进程低分辨率采样视频；
+- 用 HSV 变化分做切点、积分和去重选帧；
+- 按帧密度计算 tiers；
+- 完整 DP 装箱；
+- 输出一张 **16:9 矩形拼图**（默认 1280×720，24 帧）；
+- 笔记上限从 1500 字放宽到 4500 字，子代理超时从 180 秒放宽到 300 秒；
+- 增强流程失败会自动回退普通模式。
+
+增强模式会忽略 `subagent_frame_mode`，固定输出增强拼图；普通模式仍按原配置工作。
+增强与普通笔记使用不同缓存变体，不会混用。
 
 ## SESSDATA 怎么获取
 
