@@ -672,6 +672,7 @@ class BiliClient:
         output_path: Path,
         max_seconds: int = 600,
         max_mb: float = 20.0,
+        start_seconds: int = 0,
         referer: str = "https://www.bilibili.com/",
     ) -> bool:
         """从 B站流抽取轻量单声道音频，供 STT 使用。
@@ -696,20 +697,27 @@ class BiliClient:
             "error",
             "-headers",
             headers,
-            "-i",
-            stream_url,
-            "-t",
-            str(max(1, int(max_seconds))),
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-b:a",
-            "32k",
-            "-y",
-            str(output_path),
         ]
+        if int(start_seconds or 0) > 0:
+            # 放在 -i 前是快速 seek，适合从远程流按段抽取。
+            cmd.extend(["-ss", str(int(start_seconds))])
+        cmd.extend(
+            [
+                "-i",
+                stream_url,
+                "-t",
+                str(max(1, int(max_seconds))),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-b:a",
+                "32k",
+                "-y",
+                str(output_path),
+            ]
+        )
         try:
             subprocess.run(cmd, check=True, capture_output=True, timeout=90)
         except Exception:

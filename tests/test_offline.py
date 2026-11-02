@@ -523,6 +523,7 @@ def test_audio_pipeline() -> None:
     class FakeClient:
         def __init__(self):
             self.extract_args = None
+            self.starts = []
 
         def get_stream_info(self, bvid, cid):
             return bc.StreamInfo(
@@ -531,8 +532,11 @@ def test_audio_pipeline() -> None:
                 height=480,
             )
 
-        def extract_audio(self, url, path, max_seconds, max_mb):
-            self.extract_args = (url, max_seconds, max_mb)
+        def extract_audio(
+            self, url, path, max_seconds, max_mb, start_seconds=0
+        ):
+            self.extract_args = (url, max_seconds, max_mb, start_seconds)
+            self.starts.append(start_seconds)
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             Path(path).write_bytes(b"fake-audio")
             return True
@@ -573,7 +577,7 @@ def test_audio_pipeline() -> None:
         assert material.subtitle_source == "asr"
         assert material.subtitles
         assert fake_client.extract_args[1] == 30
-        assert job.stage == "音频转录"
+        assert job.stage.startswith("音频转录")
         assert not (Path(tmp) / "cache").exists() or not list(
             (Path(tmp) / "cache").glob("*.mp3")
         )
@@ -601,7 +605,30 @@ def test_audio_pipeline() -> None:
         )
         assert skipped.asr_subtitles == []
         assert skipped.subtitles == [(0.0, "官方字幕")]
-    print("✅ ASR：无字幕接入 / 常开补充 / 默认跳过有字幕 / 临时音频清理")
+
+        long_video = bc.VideoInfo(
+            bvid="BV1asrlong",
+            aid=1,
+            cid=2,
+            page=1,
+            page_count=1,
+            title="ASR 分块测试",
+            up_name="UP",
+            up_uid=1,
+            duration=700,
+            desc="",
+        )
+        before = len(fake_client.starts)
+        plugin._config["audio_transcription_max_seconds"] = 600
+        long_material = bc.Material(video=long_video)
+        asyncio.run(
+            plugin._transcribe_audio_if_needed(
+                long_material, event, SimpleNamespace(stage="")
+            )
+        )
+        assert fake_client.starts[before:] == [0, 300]
+        assert long_material.subtitles
+    print("✅ ASR：无字幕接入 / 常开补充 / 默认跳过 / 长音频分块")
 
 
 def test_enhanced_core() -> None:
@@ -755,6 +782,7 @@ def test_schema() -> None:
         "audio_transcription_mode",
         "audio_transcription_provider_id",
         "audio_transcription_max_seconds",
+        "audio_transcription_chunk_seconds",
         "audio_transcription_max_mb",
         "audio_transcription_timeout",
         "enhanced_mode",
@@ -767,13 +795,14 @@ def test_schema() -> None:
     assert schema["frame_count"]["default"] == 12
     assert schema["nl_trigger_enabled"]["default"] is True
     assert schema["audio_transcription_mode"]["default"] == "no_subtitle"
+    assert schema["audio_transcription_chunk_seconds"]["default"] == 300
     assert schema["enhanced_mode"]["default"] is False
     assert schema["enhanced_frame_count"]["default"] == 24
     assert schema["enhanced_digest_max_chars"]["default"] == 4500
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.7.0" in meta
+    assert "version: 0.7.1" in meta
     print("✅ 配置 schema / metadata")
 
 
