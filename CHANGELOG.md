@@ -1,9 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 (2026-11-03)
 
-文档规范化：
+修复长音频 ASR 超过 STT Provider 大小限制，并整理文档。
 
+- ASR 改为分块转录，默认每段 300 秒，避免 MiMo 等接口 `input_audio.data`
+  超过 10MB；
+- 新增 `audio_transcription_chunk_seconds`；
+- 单块失败不会中断其它块，笔记会记录失败块数；
+- 分块时间戳按块偏移合并；
+- ASR 无 Provider / Provider ID 不存在时写入明确日志；
 - README 只保留当前版本更新，完整历史移入本文件；
 - 增加致谢、MIT 许可证、SECURITY 与 THIRD_PARTY_NOTICES；
 - 补充增强模式、ASR 与参考项目说明。

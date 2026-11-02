@@ -121,6 +121,7 @@ class AudioTranscriber:
         self,
         audio_path: Path,
         duration: float = 0.0,
+        offset: float = 0.0,
     ) -> list[tuple[float, str]]:
         if self.provider is None:
             raise AudioTranscriberError("no_provider", "没有可用的 STT Provider")
@@ -134,4 +135,8 @@ class AudioTranscriber:
         cleaned = clean_asr_text(str(text or ""), self.max_chars)
         if not cleaned:
             raise AudioTranscriberError("empty_text", "STT 没有返回文本")
-        return text_to_subtitles(cleaned, duration)
+        shift = max(0.0, float(offset or 0.0))
+        return [
+            (round(start + shift, 2), content)
+            for start, content in text_to_subtitles(cleaned, duration)
+        ]

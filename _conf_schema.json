@@ -269,6 +269,12 @@
     "hint": "只转录视频前 N 秒，控制费用与超时；默认 600，最小 30",
     "default": 600
   },
+  "audio_transcription_chunk_seconds": {
+    "description": "ASR 分块秒数",
+    "type": "int",
+    "hint": "长音频按段上传，避免单次超过 STT Provider 大小限制；默认 300，建议 120~600",
+    "default": 300
+  },
   "audio_transcription_max_mb": {
     "description": "ASR 音频大小上限（MB）",
     "type": "int",
