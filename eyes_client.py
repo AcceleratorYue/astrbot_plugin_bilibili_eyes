@@ -190,6 +190,8 @@ class Material:
     subtitle_source: str = "official"
     asr_subtitles: list[tuple[float, str]] = field(default_factory=list)
     audio_transcript_partial: bool = False
+    frame_layout: list[dict] = field(default_factory=list)
+    enhanced_sheet: bool = False
     comments: list[CommentItem] = field(default_factory=list)
     danmaku_peaks: list[float] = field(default_factory=list)
     danmaku_keywords: list[tuple[float, str]] = field(default_factory=list)
@@ -599,6 +601,70 @@ class BiliClient:
             if out.exists() and out.stat().st_size <= max_mb * 1024 * 1024:
                 frames.append((out, seconds))
         return frames
+
+    def iter_lowres_frames(
+        self,
+        stream_url: str,
+        fps: int = 2,
+        max_seconds: int = 1200,
+        width: int = 64,
+        height: int = 36,
+        referer: str = "https://www.bilibili.com/",
+    ):
+        """单进程低分辨率采样，供增强模式计算画面变化分。"""
+
+        if not isinstance(stream_url, str) or not stream_url.startswith(
+            ("http://", "https://")
+        ):
+            return
+        headers = (
+            f"Referer: {referer}\r\n"
+            f"User-Agent: {self.http._headers.get('User-Agent', '')}\r\n"
+        )
+        cmd = [
+            self._ffmpeg_exe(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-headers",
+            headers,
+            "-i",
+            stream_url,
+            "-t",
+            str(max(1, int(max_seconds))),
+            "-vf",
+            f"fps={max(1, int(fps))},scale={int(width)}:{int(height)}",
+            "-an",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        frame_size = max(1, int(width)) * max(1, int(height)) * 3
+        index = 0
+        try:
+            assert process.stdout is not None
+            while True:
+                raw = process.stdout.read(frame_size)
+                if not raw or len(raw) < frame_size:
+                    break
+                yield index / max(1, int(fps)), raw
+                index += 1
+        finally:
+            try:
+                process.terminate()
+                process.wait(timeout=3)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
 
     def extract_audio(
         self,

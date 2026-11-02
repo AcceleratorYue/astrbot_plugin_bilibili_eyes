@@ -217,7 +217,22 @@ def build_material_prompt(
                 for ts, words in material.danmaku_keywords[:8]
             )
         )
-    if material.frames:
+    frame_layout = getattr(material, "frame_layout", []) or []
+    if material.frames and getattr(material, "enhanced_sheet", False) and frame_layout:
+        parts.append(
+            "这是一张增强拼图：不同格子是不同时间点的画面，不是同一时刻；"
+            "格号越小越靠前，时间戳为抽帧时间（近似）。"
+        )
+        parts.append(
+            "格号 / 时间 / 档位：\n"
+            + "\n".join(
+                f"- 第 {int(item.get('index', 0))} 格 "
+                f"{_fmt_time(float(item.get('time', 0)))} "
+                f"(tier {int(item.get('tier', 1))})"
+                for item in frame_layout[:40]
+            )
+        )
+    elif material.frames:
         times = material.frame_times
         labels = []
         for index in range(len(material.frames)):

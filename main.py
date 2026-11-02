@@ -21,7 +21,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 # AstrBot 热重载通常只重新 import main，子模块会留在 sys.modules 里，
 # 导致代码更新后仍跑到旧的 eyes_client/eyes_subagent。这里先清掉再导入。
-for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean"):
+for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean", "eyes_enhanced"):
     sys.modules.pop(_module_name, None)
 
 from astrbot.api import logger
@@ -33,6 +33,7 @@ from astrbot.core.message.message_event_result import MessageChain
 import eyes_audio
 import eyes_clean as ec
 import eyes_client as bc
+import eyes_enhanced as ee
 import eyes_subagent as sa
 from eyes_cache import MaterialStore, NoteCache
 from eyes_card import extract_bilibili_card_url
@@ -70,6 +71,20 @@ DEFAULT_OPTIONS: dict = {
     "frame_height": 480,
     "frame_source": "hotspot",
     "subagent_frame_mode": "individual",
+    "enhanced_mode": False,
+    "enhanced_frame_count": 24,
+    "enhanced_sample_fps": 2,
+    "enhanced_max_analysis_seconds": 1200,
+    "enhanced_cut_abs": 12,
+    "enhanced_cut_spike": 2.5,
+    "enhanced_cut_min_gap": 0.4,
+    "enhanced_integral_seconds": 3,
+    "enhanced_dup_min": 8,
+    "enhanced_silent_floor_seconds": 20,
+    "enhanced_sheet_width": 1280,
+    "enhanced_digest_max_chars": 4500,
+    "enhanced_subagent_timeout": 300,
+    "enhanced_fallback_to_normal": True,
     "digest_max_chars": 1500,
     "subagent_timeout": 180,
     "subagent_retries": 1,
@@ -161,7 +176,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.6.1 已加载")
+        logger.info(f"{LOG} 插件 v0.7.0 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -985,11 +1000,15 @@ class BilibiliEyesPlugin(Star):
 
     # -- 观看流程 -----------------------------------------------------
 
+    def _cache_variant(self) -> str:
+        return "enhanced" if self._bool_opt("enhanced_mode") else ""
+
     @staticmethod
-    def _video_key(ref: str, page: int | None) -> str:
+    def _video_key(ref: str, page: int | None, variant: str = "") -> str:
         refs = bc.extract_video_refs(str(ref or ""))
         normalized = refs[0] if refs else str(ref or "")
-        return f"{normalized.strip().lower()}|{int(page or 1)}"
+        suffix = f"|{variant}" if variant else ""
+        return f"{normalized.strip().lower()}|{int(page or 1)}{suffix}"
 
     def _prune_video_results(self) -> None:
         now = time.monotonic()
@@ -1016,7 +1035,7 @@ class BilibiliEyesPlugin(Star):
     ) -> tuple[bc.Material, str | None]:
         """同一个 ref+page 的并发请求只抓取/只跑一次子代理，其余复用结果。"""
 
-        key = self._video_key(ref, page)
+        key = self._video_key(ref, page, self._cache_variant())
         lock = self._video_locks.setdefault(key, asyncio.Lock())
         if lock.locked():
             logger.info(f"{LOG} single-flight 等待：{key}")
@@ -1221,7 +1240,9 @@ class BilibiliEyesPlugin(Star):
         if not self._bool_opt("include_description"):
             material.video.desc = ""
         if self._cache is not None:
-            cached = self._cache.get(video.bvid, video.page)
+            cached = self._cache.get(
+                video.bvid, video.page, self._cache_variant()
+            )
             if cached:
                 material.cached_digest = cached
                 job.stage = "命中缓存"
@@ -1293,12 +1314,19 @@ class BilibiliEyesPlugin(Star):
         if visual:
             await self._fill_frames(material, event)
         try:
+            enhanced = self._bool_opt("enhanced_mode")
             digest = await sa.run_digest(
                 self.context,
                 provider_id,
                 material,
-                max_chars=self._int_opt("digest_max_chars", 1500),
-                timeout=self._int_opt("subagent_timeout", 180),
+                max_chars=self._int_opt(
+                    "enhanced_digest_max_chars" if enhanced else "digest_max_chars",
+                    4500 if enhanced else 1500,
+                ),
+                timeout=self._int_opt(
+                    "enhanced_subagent_timeout" if enhanced else "subagent_timeout",
+                    300 if enhanced else 180,
+                ),
                 retries=self._int_opt("subagent_retries", 1),
                 visual=visual,
                 system_prompt=str(self._opt("subagent_system_prompt") or "").strip(),
@@ -1312,6 +1340,7 @@ class BilibiliEyesPlugin(Star):
                     material.video.page,
                     digest,
                     {"title": material.video.title},
+                    self._cache_variant(),
                 )
             return digest
         except Exception as exc:
@@ -1320,6 +1349,121 @@ class BilibiliEyesPlugin(Star):
             return digest
 
     async def _fill_frames(self, material: bc.Material, event) -> None:
+        if not self._bool_opt("enhanced_mode"):
+            await self._fill_frames_normal(material, event)
+            return
+        try:
+            ok = await self._fill_frames_enhanced(material, event)
+        except Exception as exc:
+            logger.warning(f"{LOG} 增强取帧异常：{exc}")
+            ok = False
+        if ok:
+            return
+        if not self._bool_opt("enhanced_fallback_to_normal"):
+            material.warnings.append("增强取帧失败，未回退普通模式")
+            return
+        material.warnings.append("增强取帧失败，已回退普通模式")
+        await self._fill_frames_normal(material, event)
+
+    async def _fill_frames_enhanced(
+        self, material: bc.Material, event
+    ) -> bool:
+        client = self._client()
+        job = self._active.get(event.unified_msg_origin)
+        if job:
+            job.stage = "增强取帧"
+        try:
+            info = await self._run(
+                client.get_stream_info,
+                material.video.bvid,
+                material.video.cid,
+            )
+        except Exception as exc:
+            logger.warning(f"{LOG} 增强模式取流失败：{exc}")
+            return False
+        cfg = ee.EnhancedConfig(
+            frame_count=max(1, min(32, self._int_opt("enhanced_frame_count", 24))),
+            sample_fps=max(1, min(4, self._int_opt("enhanced_sample_fps", 2))),
+            max_analysis_seconds=max(
+                30, self._int_opt("enhanced_max_analysis_seconds", 1200)
+            ),
+            cut_abs=float(self._int_opt("enhanced_cut_abs", 12)),
+            cut_spike=float(self._opt("enhanced_cut_spike") or 2.5),
+            cut_min_gap=float(self._opt("enhanced_cut_min_gap") or 0.4),
+            integral_seconds=float(self._opt("enhanced_integral_seconds") or 3),
+            dup_min=float(self._opt("enhanced_dup_min") or 8),
+            silent_floor_seconds=float(
+                self._opt("enhanced_silent_floor_seconds") or 20
+            ),
+            sheet_width=max(640, self._int_opt("enhanced_sheet_width", 1280)),
+        )
+        cfg.sheet_height = max(360, int(round(cfg.sheet_width * 9 / 16)))
+        duration = float(material.video.duration or 0)
+        if duration > cfg.max_analysis_seconds:
+            material.warnings.append(
+                f"增强模式仅分析前 {cfg.max_analysis_seconds} 秒"
+            )
+        try:
+            keyframes = await self._run(
+                ee.select_keyframes_from_stream,
+                client,
+                info.video_url,
+                duration,
+                cfg,
+            )
+        except Exception as exc:
+            logger.warning(f"{LOG} 增强选帧失败：{exc}")
+            return False
+        if not keyframes:
+            return False
+        out_dir = self._data_dir() / "frames" / material.video.bvid / "enhanced"
+        timestamps = [round(float(item.time), 1) for item in keyframes]
+        pairs = await self._run(
+            client.extract_frames,
+            info.video_url,
+            timestamps,
+            out_dir,
+            self._int_opt("frame_height", 480),
+            float(self._int_opt("max_frame_mb", 3)),
+        )
+        if not pairs:
+            return False
+        tiers = ee.assign_tiers([seconds for _path, seconds in pairs])
+        segments = ee.split_one_bin(tiers, bin_cost=1000)
+        if not segments:
+            return False
+        if len(segments) > 1:
+            material.warnings.append(
+                f"增强拼图超出一张，保留前 {len(segments[0])} 帧"
+            )
+        segment_length = len(segments[0])
+        pairs = pairs[:segment_length]
+        tiers = tiers[:segment_length]
+        sheet_frames = [
+            ee.SheetFrame(time=float(seconds), path=path, tier=int(tier))
+            for (path, seconds), tier in zip(pairs, tiers)
+        ]
+        cells = ee.solve(tiers, bin_cost=1000)["cells"]
+        sheet_path = out_dir / "enhanced_sheet.jpg"
+        layout = await self._run(
+            ee.compose_sheet,
+            sheet_frames,
+            cells,
+            sheet_path,
+            cfg.sheet_width,
+            cfg.sheet_height,
+            cfg.gutter,
+        )
+        material.frames = [layout.sheet]
+        material.frame_times = [-1.0]
+        material.frame_layout = layout.cells
+        material.enhanced_sheet = True
+        material.warnings.append(
+            f"增强模式：变化选帧 + DP 拼图，共 {len(sheet_frames)} 帧"
+        )
+        return True
+
+    async def _fill_frames_normal(self, material: bc.Material, event) -> None:
         if material.frames:
             return
         client = self._client()

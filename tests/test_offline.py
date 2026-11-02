@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 import tempfile
+from array import array
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,7 @@ import eyes_cache  # noqa: E402
 import eyes_clean as ec  # noqa: E402
 import eyes_card  # noqa: E402
 import eyes_client as bc  # noqa: E402
+import eyes_enhanced as ee  # noqa: E402
 import eyes_subagent as sa  # noqa: E402
 
 
@@ -231,6 +233,9 @@ def test_note_cache() -> None:
         cache = eyes_cache.NoteCache(tmp, ttl_hours=168, max_entries=2)
         cache.set("BV1", 1, "笔记一")
         assert cache.get("BV1", 1) == "笔记一"
+        cache.set("BV1", 1, "增强笔记", variant="enhanced")
+        assert cache.get("BV1", 1) == "笔记一"
+        assert cache.get("BV1", 1, variant="enhanced") == "增强笔记"
         assert cache.get("BV2", 1) is None
         cache.set("BV2", 1, "笔记二")
         cache.set("BV3", 1, "笔记三")
@@ -599,6 +604,139 @@ def test_audio_pipeline() -> None:
     print("✅ ASR：无字幕接入 / 常开补充 / 默认跳过有字幕 / 临时音频清理")
 
 
+def test_enhanced_core() -> None:
+    from PIL import Image
+
+    cfg = ee.EnhancedConfig(
+        frame_count=4,
+        sample_fps=2,
+        cut_abs=12,
+        cut_spike=2.5,
+        integral_seconds=100,
+        silent_floor_seconds=1000,
+    )
+    samples = [
+        ee.FrameSample(
+            float(index),
+            array("f", [float(index * 40), 100.0, 100.0]),
+            score,
+        )
+        for index, score in enumerate([0.0, 50.0, 0.0, 0.0])
+    ]
+    keys = ee.select_keyframes(samples, 20, cfg)
+    assert keys and keys[0].time == 0
+    assert any(item.via == "cut" for item in keys)
+    assert len(keys) == 4
+
+    times = [float(index * 10) for index in range(24)]
+    tiers = ee.assign_tiers(times)
+    plan = ee.solve(tiers, bin_cost=1000)
+    assert plan["bins"] == 1
+    assert len(plan["cells"]) == 24
+    rects = ee.to_rects(plan["cells"], 1280, 720, 4)
+    assert len(rects) == 24
+    assert all(rect["pw"] > 0 and rect["ph"] > 0 for rect in rects)
+    for left in range(len(rects)):
+        for right in range(left + 1, len(rects)):
+            a, b = rects[left], rects[right]
+            overlap_x = min(a["px"] + a["pw"], b["px"] + b["pw"]) - max(
+                a["px"], b["px"]
+            )
+            overlap_y = min(a["py"] + a["ph"], b["py"] + b["ph"]) - max(
+                a["py"], b["py"]
+            )
+            assert overlap_x <= 0 or overlap_y <= 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        frames = []
+        for index in range(4):
+            path = Path(tmp) / f"f{index}.jpg"
+            Image.new("RGB", (64, 36), (index * 50, 40, 80)).save(path)
+            frames.append(ee.SheetFrame(index * 2.0, path, 4))
+        cells = ee.solve([4, 4, 4, 4], bin_cost=1000)["cells"]
+        layout = ee.compose_sheet(
+            frames, cells, Path(tmp) / "sheet.jpg", 640, 360, 4
+        )
+        assert layout.sheet.exists()
+        assert len(layout.cells) == 4
+    print("✅ 增强模式：变化选帧 / DP 单箱 / 16:9 拼图")
+
+
+def test_enhanced_pipeline() -> None:
+    import main as plugin_main
+    from PIL import Image
+
+    class FakeClient:
+        def get_stream_info(self, bvid, cid):
+            return bc.StreamInfo(
+                video_url="https://example.invalid/video",
+                audio_url="",
+                height=480,
+            )
+
+        def iter_lowres_frames(
+            self, url, fps=2, max_seconds=1200, width=64, height=36
+        ):
+            for index in range(48):
+                color = (index * 5) % 256
+                raw = bytes([color, (index * 11) % 256, 80]) * (width * height)
+                yield index / fps, raw
+
+        def extract_frames(
+            self, url, timestamps, out_dir, height=480, max_mb=3
+        ):
+            out_dir = Path(out_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            pairs = []
+            for index, timestamp in enumerate(timestamps):
+                path = out_dir / f"frame_{index:02d}.jpg"
+                Image.new("RGB", (320, 180), (index * 20 % 255, 40, 90)).save(path)
+                pairs.append((path, timestamp))
+            return pairs
+
+    with tempfile.TemporaryDirectory() as tmp:
+        plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+        plugin._config = {
+            **plugin_main.DEFAULT_OPTIONS,
+            "enhanced_mode": True,
+            "enhanced_frame_count": 24,
+            "enhanced_sample_fps": 2,
+            "enhanced_max_analysis_seconds": 120,
+            "enhanced_fallback_to_normal": False,
+            "cache_enabled": False,
+        }
+        plugin._active = {}
+        plugin._client = lambda: FakeClient()
+        plugin._data_dir = lambda: Path(tmp)
+
+        async def run(func, *args):
+            return func(*args)
+
+        plugin._run = run
+        video = bc.VideoInfo(
+            bvid="BV1enh",
+            aid=1,
+            cid=2,
+            page=1,
+            page_count=1,
+            title="增强测试",
+            up_name="UP",
+            up_uid=1,
+            duration=24,
+            desc="",
+        )
+        material = bc.Material(video=video)
+        event = SimpleNamespace(unified_msg_origin="test:GroupMessage:1")
+        asyncio.run(plugin._fill_frames_enhanced(material, event))
+        assert material.enhanced_sheet
+        assert material.frames and Path(material.frames[0]).exists()
+        assert material.frame_layout
+        assert len(material.frame_layout) <= 24
+        prompt = sa.build_material_prompt(material)
+        assert "增强拼图" in prompt and "格号" in prompt
+    print("✅ 增强模式：端到端假流 / 拼图 / layout / 提示词")
+
+
 def test_schema() -> None:
     schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
     required = {
@@ -619,15 +757,23 @@ def test_schema() -> None:
         "audio_transcription_max_seconds",
         "audio_transcription_max_mb",
         "audio_transcription_timeout",
+        "enhanced_mode",
+        "enhanced_frame_count",
+        "enhanced_digest_max_chars",
+        "enhanced_subagent_timeout",
+        "enhanced_fallback_to_normal",
     }
     assert required <= set(schema), required - set(schema)
     assert schema["frame_count"]["default"] == 12
     assert schema["nl_trigger_enabled"]["default"] is True
     assert schema["audio_transcription_mode"]["default"] == "no_subtitle"
+    assert schema["enhanced_mode"]["default"] is False
+    assert schema["enhanced_frame_count"]["default"] == 24
+    assert schema["enhanced_digest_max_chars"]["default"] == 4500
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.6.1" in meta
+    assert "version: 0.7.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -677,6 +823,8 @@ def main() -> int:
     test_frame_tool()
     test_audio_transcriber()
     test_audio_pipeline()
+    test_enhanced_core()
+    test_enhanced_pipeline()
     test_schema()
     print("\n全部离线测试通过")
     return 0
