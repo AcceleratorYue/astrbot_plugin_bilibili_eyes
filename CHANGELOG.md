@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+文档规范化：
+
+- README 只保留当前版本更新，完整历史移入本文件；
+- 增加致谢、MIT 许可证、SECURITY 与 THIRD_PARTY_NOTICES；
+- 补充增强模式、ASR 与参考项目说明。
+
 ## 0.7.0 (2026-11-02)
 
 新增默认关闭的增强模式，普通模式与钩子保持不变。
