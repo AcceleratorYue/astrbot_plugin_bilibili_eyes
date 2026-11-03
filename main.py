@@ -82,10 +82,11 @@ DEFAULT_OPTIONS: dict = {
     "enhanced_dup_min": 8,
     "enhanced_silent_floor_seconds": 20,
     "enhanced_sheet_width": 1280,
-    "enhanced_digest_max_chars": 4500,
+    "enhanced_digest_max_chars": 6000,
     "enhanced_subagent_timeout": 300,
     "enhanced_fallback_to_normal": True,
-    "digest_max_chars": 1500,
+    "enhanced_frames_per_sheet": 6,
+    "digest_max_chars": 3000,
     "subagent_timeout": 180,
     "subagent_retries": 1,
     "audio_transcription_enabled": False,
@@ -137,6 +138,7 @@ DEFAULT_OPTIONS: dict = {
     "wait_notice_cooldown_seconds": 15,
     "wait_notice_stop_event": True,
     "max_frame_mb": 3,
+    "frames_per_sheet": 6,
 }
 
 
@@ -177,7 +179,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.7.1 已加载")
+        logger.info(f"{LOG} 插件 v0.8.0 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -1378,7 +1380,7 @@ class BilibiliEyesPlugin(Star):
                 material,
                 max_chars=self._int_opt(
                     "enhanced_digest_max_chars" if enhanced else "digest_max_chars",
-                    4500 if enhanced else 1500,
+                    6000 if enhanced else 3000,
                 ),
                 timeout=self._int_opt(
                     "enhanced_subagent_timeout" if enhanced else "subagent_timeout",
@@ -1485,38 +1487,57 @@ class BilibiliEyesPlugin(Star):
         )
         if not pairs:
             return False
-        tiers = ee.assign_tiers([seconds for _path, seconds in pairs])
-        segments = ee.split_one_bin(tiers, bin_cost=1000)
-        if not segments:
-            return False
-        if len(segments) > 1:
-            material.warnings.append(
-                f"增强拼图超出一张，保留前 {len(segments[0])} 帧"
-            )
-        segment_length = len(segments[0])
-        pairs = pairs[:segment_length]
-        tiers = tiers[:segment_length]
-        sheet_frames = [
-            ee.SheetFrame(time=float(seconds), path=path, tier=int(tier))
-            for (path, seconds), tier in zip(pairs, tiers)
-        ]
-        cells = ee.solve(tiers, bin_cost=1000)["cells"]
-        sheet_path = out_dir / "enhanced_sheet.jpg"
-        layout = await self._run(
-            ee.compose_sheet,
-            sheet_frames,
-            cells,
-            sheet_path,
-            cfg.sheet_width,
-            cfg.sheet_height,
-            cfg.gutter,
+        per_sheet = max(
+            2, min(12, self._int_opt("enhanced_frames_per_sheet", 6))
         )
-        material.frames = [layout.sheet]
-        material.frame_times = [-1.0]
-        material.frame_layout = layout.cells
+        sheet_paths: list[Path] = []
+        flat_layout: list[dict] = []
+        total_frames = 0
+        for sheet_index in range(0, len(pairs), per_sheet):
+            chunk = pairs[sheet_index : sheet_index + per_sheet]
+            if not chunk:
+                continue
+            tiers = ee.assign_tiers([seconds for _path, seconds in chunk])
+            segments = ee.split_one_bin(tiers, bin_cost=1000)
+            if not segments:
+                continue
+            if len(segments) > 1:
+                chunk = chunk[: len(segments[0])]
+                tiers = tiers[: len(segments[0])]
+            sheet_frames = [
+                ee.SheetFrame(time=float(seconds), path=path, tier=int(tier))
+                for (path, seconds), tier in zip(chunk, tiers)
+            ]
+            cells = ee.solve(tiers, bin_cost=1000)["cells"]
+            sheet_no = len(sheet_paths) + 1
+            sheet_path = out_dir / f"enhanced_sheet_{sheet_no:02d}.jpg"
+            layout = await self._run(
+                ee.compose_sheet,
+                sheet_frames,
+                cells,
+                sheet_path,
+                cfg.sheet_width,
+                cfg.sheet_height,
+                cfg.gutter,
+            )
+            if not layout.cells:
+                continue
+            sheet_paths.append(layout.sheet)
+            for cell in layout.cells:
+                item = dict(cell)
+                item["sheet"] = sheet_no
+                item["global_index"] = total_frames + int(cell.get("index", 0))
+                flat_layout.append(item)
+            total_frames += len(layout.cells)
+        if not sheet_paths:
+            return False
+        material.frames = sheet_paths
+        material.frame_times = [-1.0] * len(sheet_paths)
+        material.frame_layout = flat_layout
         material.enhanced_sheet = True
         material.warnings.append(
-            f"增强模式：变化选帧 + DP 拼图，共 {len(sheet_frames)} 帧"
+            f"增强模式：{total_frames} 帧 / {len(sheet_paths)} 张拼图，"
+            f"每张最多 {per_sheet} 帧"
         )
         return True
 
@@ -1573,57 +1594,96 @@ class BilibiliEyesPlugin(Star):
             == "contact_sheet_plus"
             and material.frames
         ):
-            sheet = await self._run(
-                self._make_contact_sheet,
+            per_sheet = max(2, min(12, self._int_opt("frames_per_sheet", 6)))
+            sheets, layout = await self._run(
+                self._make_contact_sheets,
                 list(material.frames),
                 out_dir,
                 list(material.frame_times),
+                per_sheet,
             )
-            if sheet:
-                material.frames = [sheet]
-                material.frame_times = [-1.0]
-                material.warnings.append("联系图模式：12 帧拼成一张图")
+            if sheets:
+                material.frames = sheets
+                material.frame_times = [-1.0] * len(sheets)
+                material.frame_layout = layout
+                material.warnings.append(
+                    f"联系图模式：{len(layout)} 帧拆成 {len(sheets)} 张，"
+                    f"每张最多 {per_sheet} 帧"
+                )
 
-    def _make_contact_sheet(
-        self, frames: list[Path], out_dir: Path, frame_times: list[float] | None = None
-    ) -> Path | None:
-        """把多帧拼成一张联系图；失败时返回 None，继续用原图。"""
+    def _make_contact_sheets(
+        self,
+        frames: list[Path],
+        out_dir: Path,
+        frame_times: list[float] | None = None,
+        per_sheet: int = 6,
+    ) -> tuple[list[Path], list[dict]]:
+        """按时间顺序把帧拆成多张联系图，每张不要塞太满。"""
 
         try:
             from PIL import Image, ImageDraw
 
             if not frames:
-                return None
-            columns = 4
-            thumb_w, thumb_h = 320, 180
-            rows = (len(frames) + columns - 1) // columns
-            canvas = Image.new(
-                "RGB", (columns * thumb_w, rows * thumb_h), (18, 18, 18)
-            )
-            draw = ImageDraw.Draw(canvas)
-            for index, frame in enumerate(frames[:12]):
-                try:
-                    image = Image.open(frame).convert("RGB")
-                except Exception:
-                    continue
-                image.thumbnail((thumb_w - 8, thumb_h - 8))
-                x = (index % columns) * thumb_w + (thumb_w - image.width) // 2
-                y = (index // columns) * thumb_h + (thumb_h - image.height) // 2
-                canvas.paste(image, (x, y))
-                label = str(index + 1)
-                if frame_times and index < len(frame_times):
-                    label = f"{label} {sa._fmt_time(frame_times[index])}"
-                draw.text(
-                    ((index % columns) * thumb_w + 6, (index // columns) * thumb_h + 4),
-                    label,
-                    fill=(255, 230, 80),
-                )
+                return [], []
+            per_sheet = max(2, min(12, int(per_sheet)))
             out_dir.mkdir(parents=True, exist_ok=True)
-            out_path = out_dir / "contact_sheet.jpg"
-            canvas.save(out_path, quality=85)
-            return out_path
+            sheets: list[Path] = []
+            layout: list[dict] = []
+            for start in range(0, len(frames), per_sheet):
+                chunk = frames[start : start + per_sheet]
+                chunk_times = (frame_times or [])[start : start + per_sheet]
+                columns = 2 if len(chunk) > 1 else 1
+                rows = (len(chunk) + columns - 1) // columns
+                cell_w, cell_h = 640, 360
+                canvas = Image.new(
+                    "RGB", (columns * cell_w, rows * cell_h), (18, 18, 18)
+                )
+                draw = ImageDraw.Draw(canvas)
+                for index, frame in enumerate(chunk):
+                    try:
+                        image = Image.open(frame).convert("RGB")
+                    except Exception:
+                        continue
+                    image.thumbnail((cell_w - 10, cell_h - 10))
+                    x = (index % columns) * cell_w + (cell_w - image.width) // 2
+                    y = (index // columns) * cell_h + (cell_h - image.height) // 2
+                    canvas.paste(image, (x, y))
+                    timestamp = (
+                        chunk_times[index]
+                        if index < len(chunk_times)
+                        else 0.0
+                    )
+                    label = f"{start + index + 1} {sa._fmt_time(timestamp)}"
+                    draw.rectangle(
+                        [
+                            (index % columns) * cell_w + 4,
+                            (index // columns) * cell_h + 4,
+                            (index % columns) * cell_w + 116,
+                            (index // columns) * cell_h + 24,
+                        ],
+                        fill=(0, 0, 0),
+                    )
+                    draw.text(
+                        (
+                            (index % columns) * cell_w + 8,
+                            (index // columns) * cell_h + 8,
+                        ),
+                        label,
+                        fill=(255, 230, 80),
+                    )
+                    layout.append(
+                        {
+                            "sheet": len(sheets) + 1,
+                            "index": start + index + 1,
+                            "time": round(float(timestamp), 2),
+                        }
+                    )
+                out_path = out_dir / f"contact_sheet_{len(sheets) + 1:02d}.jpg"
+                canvas.save(out_path, quality=88)
+                sheets.append(out_path)
+            return sheets, layout
         except Exception:
-            return None
+            return [], []
 
     def _data_dir(self) -> Path:
         try:
