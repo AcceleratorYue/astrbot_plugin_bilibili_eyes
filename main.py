@@ -50,7 +50,7 @@ FOLLOWUP_RE = re.compile(
 )
 FOLLOWUP_TTL_SECONDS = 30 * 60
 VIDEO_RESULT_TTL_SECONDS = 120
-CACHE_VERSION = "4"
+CACHE_VERSION = "5"
 
 DEFAULT_OPTIONS: dict = {
     "enabled": True,
@@ -179,7 +179,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.8.0 已加载")
+        logger.info(f"{LOG} 插件 v0.8.1 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
