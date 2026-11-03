@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.8.1>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.9.0>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,11 +12,14 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.8.1
+## 当前版本 v0.9.0
 
 - 新增默认关闭的 **增强模式**：低分辨率变化采样、切点/积分选帧、tiers、完整 DP 装箱、16:9 拼图；
-- 增强模式默认 24 帧，按 6 帧/张拆成多张 16:9 拼图，笔记上限 6000 字；普通模式笔记上限 3000 字；
-- 缓存版本升到 v5，旧版单张拼图/逐帧笔记不会继续复用。
+- 增强模式默认 24 帧，按 6 帧/张拆成多张 16:9 拼图；
+- 笔记拆成“核心内容 + 其他客观内容”，评论区原文不再被简单删减：
+  - 普通模式：核心 2000 字 + 其他 1000 字；
+  - 增强模式：核心 4500 字 + 其他 1500 字；
+- 缓存版本升到 v6，旧版单张拼图/逐帧笔记不会继续复用。
 - 无官方字幕时可使用 AstrBot STT 做音频转写（0.6.x 系列）；长音频自动分块，避免超过 Provider 10MB 限制；
 - 支持回看、追问、单帧截图、UP 主页、简介/字幕/评论/弹幕清洗、笔记缓存。
 
@@ -62,8 +65,10 @@
 | `subagent_frame_mode` | individual | individual=12 帧原图；contact_sheet_plus=按 6 帧/张拆成多张联系图 |
 | `frames_per_sheet` | 6 | 普通联系图每张帧数；拆小一些，保证单帧可读 |
 | `enhanced_frames_per_sheet` | 6 | 增强模式每张拼图帧数；24 帧会拆成多张 |
-| `digest_max_chars` | 3000 | 普通模式笔记长度上限 |
-| `enhanced_digest_max_chars` | 6000 | 增强模式笔记长度上限 |
+| `digest_max_chars` | 2000 | 普通模式核心笔记上限 |
+| `digest_other_max_chars` | 1000 | 普通模式其他客观内容上限 |
+| `enhanced_digest_max_chars` | 4500 | 增强模式核心笔记上限 |
+| `enhanced_other_max_chars` | 1500 | 增强模式其他客观内容上限 |
 | `enhanced_mode` | 关 | 增强模式：变化选帧 + tiers + 完整 DP 装箱 + 多张 16:9 拼图 |
 | `enhanced_frame_count` | 24 | 增强模式目标帧数 |
 | `enhanced_subagent_timeout` | 300 | 增强模式子代理超时 |
@@ -71,7 +76,7 @@
 | `injection_guard` | 开 | 素材边界防提示注入 |
 | `subagent_system_prompt` | 空 | 子代理系统提示词；留空用内置故事整理规则 |
 | `subagent_output_instructions` | 空 | 子代理输出格式；留空用内置故事梗概/连续叙事结构 |
-| `main_model_prompt_template` | 空 | 回传主模型的提示词模板；留空用内置模板，支持 `{digest}` 等占位符 |
+| `main_model_prompt_template` | 空 | 回传主模型的提示词模板；支持 `{digest}` / `{core_digest}` / `{other_digest}` 等，详见「提示词自定义」 |
 | `ack_enabled` | 开 | 收到请求后先回一句开始提示 |
 | `ack_template_video` / `ack_template_up` | 我去看看…/我去翻一下… | 开始提示文案 |
 | `prepare_timeout_video` / `prepare_timeout_up` | 240 / 25 秒 | 视频 / UP 准备超时 |
@@ -100,7 +105,7 @@
 - 按帧密度计算 tiers；
 - 完整 DP 装箱；
 - 输出多张 **16:9 矩形拼图**（默认 1280×720，24 帧按 6 帧/张拆分）；
-- 笔记上限普通模式 3000 字，增强模式 6000 字；增强子代理超时 300 秒；
+- 笔记预算普通模式 2000 + 1000 字，增强模式 4500 + 1500 字；增强子代理超时 300 秒；
 - 增强流程失败会自动回退普通模式。
 
 增强模式会忽略 `subagent_frame_mode`，固定输出增强拼图；普通模式仍按原配置工作。
@@ -151,14 +156,27 @@
 
 三处可配，全部留空时使用内置默认：
 
-- `subagent_system_prompt`：子代理的观察规则（只看事实、不评价、不脑补）；
-- `subagent_output_instructions`：子代理的输出结构（默认客观信息/主旨/时间轴/画面/观众观点/不确定项）；
+- `subagent_system_prompt`：子代理的整理规则（允许有证据的连续叙事推断，评论只作为观众观点）；
+- `subagent_output_instructions`：子代理的输出结构。默认要求输出
+  `<video_core_notes>` 核心内容 + `<video_other_notes>` 其他客观内容两份；
 - `main_model_prompt_template`：回传给主模型的模板。
 
-模板占位符：
+### 两份笔记
+
+- **核心内容**：故事梗概、连续叙事、关键对白/ASR、关键画面、不确定项；
+- **其他客观内容**：视频客观信息、评论区原文、关键弹幕。
+
+普通模式默认预算：核心 **2000** 字 + 其他 **1000** 字。  
+增强模式默认预算：核心 **4500** 字 + 其他 **1500** 字。
+
+`subagent_output_instructions` 如果自定义，建议保留这两个标签，否则插件会把整段输出当作核心内容。
+
+### 回传模板占位符
 
 ```text
-{digest}         子代理笔记
+{digest}         完整笔记（包含核心 + 其他两段，带标签）
+{core_digest}    只替换核心内容
+{other_digest}   只替换其他客观内容
 {guard_note}     防提示注入说明（injection_guard 开启时才有）
 {style_note}     内置的“随口聊两句、不必总结”风格说明
 {ignored_note}   多个链接只看第一个的说明
@@ -167,7 +185,41 @@
 {question}       只替换问题原文
 ```
 
-自定义模板必须包含 `{digest}`；没有时插件会自动把观察内容追加到末尾。
+默认模板仍然使用 `{digest}`，所以**不修改也能拿到两份内容**。  
+如果想把两份内容放在不同位置，可以自定义模板；模板里只要出现
+`{digest}`、`{core_digest}`、`{other_digest}` 中任意一个，插件就不会再自动追加整段笔记。
+
+示例：
+
+```text
+{guard_note}
+你刚才看完了这个视频。先自己理解故事，再用当前角色的语气回复。
+
+<video_core_notes>
+{core_digest}
+</video_core_notes>
+
+<video_other_notes>
+{other_digest}
+</video_other_notes>
+
+{style_note}
+{question_note}
+```
+
+设置方法：
+
+1. 打开 AstrBot WebUI → 插件配置 → B站之眼；
+2. 找到 `main_model_prompt_template`；
+3. 填入上面的模板并保存；
+4. 重载插件，重新看一个视频即可生效。
+
+注意：
+
+- 模板不要输出字段名、标签或“核心内容/其他客观内容”这些词，主模型只把它们当参考；
+- 评论属于观众观点，不是视频事实；
+- `{digest}` 已包含两段，若同时写 `{digest}` 和 `{core_digest}`，核心内容会重复，通常只选一种写法。
+
 默认风格：**使用当前对话角色原本的身份和语气；先给一两句真实反应，再讲内容。
 可概括，也可只聊一个细节、画面或感受；表达简洁口语化，避免汇报腔、客服腔和逐条总结。
 情绪随内容自然变化，不强行积极或深沉；不主动报时长、不编造细节。

@@ -212,6 +212,19 @@ def test_digest_helpers() -> None:
     assert '"' not in sa.normalize_quotes(quoted)
     assert '"' not in sa.build_main_model_prompt(quoted)
 
+    core, other = sa.split_note_sections(
+        "<video_core_notes>核心故事</video_core_notes>\n"
+        "<video_other_notes>评论区原文</video_other_notes>"
+    )
+    assert core == "核心故事" and other == "评论区原文"
+    bundle = sa.format_note_bundle(core, other)
+    assert "<video_core_notes>" in bundle and "<video_other_notes>" in bundle
+    split_prompt = sa.build_main_model_prompt(
+        bundle, template="核心：{core_digest}\n其他：{other_digest}"
+    )
+    assert "核心：核心故事" in split_prompt and "其他：评论区原文" in split_prompt
+    assert "旧笔记" in sa.build_main_model_prompt("旧笔记")
+
     up_empty = bc.UpInfo(
         uid=1, name="测试UP", sign="", level=6, fans=100, archives=[]
     )
@@ -778,6 +791,7 @@ def test_schema() -> None:
         "frame_count",
         "frames_per_sheet",
         "digest_max_chars",
+        "digest_other_max_chars",
         "wait_notice_template",
         "cache_ttl_hours",
         "audio_transcription_enabled",
@@ -790,6 +804,7 @@ def test_schema() -> None:
         "enhanced_mode",
         "enhanced_frame_count",
         "enhanced_digest_max_chars",
+        "enhanced_other_max_chars",
         "enhanced_subagent_timeout",
         "enhanced_fallback_to_normal",
         "enhanced_frames_per_sheet",
@@ -801,14 +816,16 @@ def test_schema() -> None:
     assert schema["audio_transcription_chunk_seconds"]["default"] == 300
     assert schema["enhanced_mode"]["default"] is False
     assert schema["enhanced_frame_count"]["default"] == 24
-    assert schema["digest_max_chars"]["default"] == 3000
-    assert schema["enhanced_digest_max_chars"]["default"] == 6000
+    assert schema["digest_max_chars"]["default"] == 2000
+    assert schema["digest_other_max_chars"]["default"] == 1000
+    assert schema["enhanced_digest_max_chars"]["default"] == 4500
+    assert schema["enhanced_other_max_chars"]["default"] == 1500
     assert schema["frames_per_sheet"]["default"] == 6
     assert schema["enhanced_frames_per_sheet"]["default"] == 6
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.8.1" in meta
+    assert "version: 0.9.0" in meta
     print("✅ 配置 schema / metadata")
 
 

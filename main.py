@@ -50,7 +50,7 @@ FOLLOWUP_RE = re.compile(
 )
 FOLLOWUP_TTL_SECONDS = 30 * 60
 VIDEO_RESULT_TTL_SECONDS = 120
-CACHE_VERSION = "5"
+CACHE_VERSION = "6"
 
 DEFAULT_OPTIONS: dict = {
     "enabled": True,
@@ -82,11 +82,13 @@ DEFAULT_OPTIONS: dict = {
     "enhanced_dup_min": 8,
     "enhanced_silent_floor_seconds": 20,
     "enhanced_sheet_width": 1280,
-    "enhanced_digest_max_chars": 6000,
+    "enhanced_digest_max_chars": 4500,
+    "enhanced_other_max_chars": 1500,
     "enhanced_subagent_timeout": 300,
     "enhanced_fallback_to_normal": True,
     "enhanced_frames_per_sheet": 6,
-    "digest_max_chars": 3000,
+    "digest_max_chars": 2000,
+    "digest_other_max_chars": 1000,
     "subagent_timeout": 180,
     "subagent_retries": 1,
     "audio_transcription_enabled": False,
@@ -179,7 +181,7 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.8.1 已加载")
+        logger.info(f"{LOG} 插件 v0.9.0 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -1380,7 +1382,13 @@ class BilibiliEyesPlugin(Star):
                 material,
                 max_chars=self._int_opt(
                     "enhanced_digest_max_chars" if enhanced else "digest_max_chars",
-                    6000 if enhanced else 3000,
+                    4500 if enhanced else 2000,
+                ),
+                other_max_chars=self._int_opt(
+                    "enhanced_other_max_chars"
+                    if enhanced
+                    else "digest_other_max_chars",
+                    1500 if enhanced else 1000,
                 ),
                 timeout=self._int_opt(
                     "enhanced_subagent_timeout" if enhanced else "subagent_timeout",
