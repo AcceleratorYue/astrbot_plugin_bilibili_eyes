@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.8.0>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.8.1>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,10 +12,11 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.8.0
+## 当前版本 v0.8.1
 
 - 新增默认关闭的 **增强模式**：低分辨率变化采样、切点/积分选帧、tiers、完整 DP 装箱、16:9 拼图；
 - 增强模式默认 24 帧，按 6 帧/张拆成多张 16:9 拼图，笔记上限 6000 字；普通模式笔记上限 3000 字；
+- 缓存版本升到 v5，旧版单张拼图/逐帧笔记不会继续复用。
 - 无官方字幕时可使用 AstrBot STT 做音频转写（0.6.x 系列）；长音频自动分块，避免超过 Provider 10MB 限制；
 - 支持回看、追问、单帧截图、UP 主页、简介/字幕/评论/弹幕清洗、笔记缓存。
 
