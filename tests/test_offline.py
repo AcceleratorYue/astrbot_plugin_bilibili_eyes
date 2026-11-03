@@ -760,8 +760,9 @@ def test_enhanced_pipeline() -> None:
         assert material.frame_layout
         assert len(material.frame_layout) <= 24
         prompt = sa.build_material_prompt(material)
-        assert "增强拼图" in prompt and "格号" in prompt
-    print("✅ 增强模式：端到端假流 / 拼图 / layout / 提示词")
+        assert "连续拼图组" in prompt and "格 " in prompt
+        assert all(Path(path).exists() for path in material.frames)
+    print("✅ 增强模式：端到端假流 / 多张拼图 / layout / 提示词")
 
 
 def test_schema() -> None:
@@ -775,6 +776,7 @@ def test_schema() -> None:
         "sessdata",
         "vision_provider_id",
         "frame_count",
+        "frames_per_sheet",
         "digest_max_chars",
         "wait_notice_template",
         "cache_ttl_hours",
@@ -790,6 +792,7 @@ def test_schema() -> None:
         "enhanced_digest_max_chars",
         "enhanced_subagent_timeout",
         "enhanced_fallback_to_normal",
+        "enhanced_frames_per_sheet",
     }
     assert required <= set(schema), required - set(schema)
     assert schema["frame_count"]["default"] == 12
@@ -798,11 +801,14 @@ def test_schema() -> None:
     assert schema["audio_transcription_chunk_seconds"]["default"] == 300
     assert schema["enhanced_mode"]["default"] is False
     assert schema["enhanced_frame_count"]["default"] == 24
-    assert schema["enhanced_digest_max_chars"]["default"] == 4500
+    assert schema["digest_max_chars"]["default"] == 3000
+    assert schema["enhanced_digest_max_chars"]["default"] == 6000
+    assert schema["frames_per_sheet"]["default"] == 6
+    assert schema["enhanced_frames_per_sheet"]["default"] == 6
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.7.1" in meta
+    assert "version: 0.8.0" in meta
     print("✅ 配置 schema / metadata")
 
 

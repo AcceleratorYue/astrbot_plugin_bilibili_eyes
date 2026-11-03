@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.7.1>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.8.0>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,10 +12,10 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.7.1
+## 当前版本 v0.8.0
 
 - 新增默认关闭的 **增强模式**：低分辨率变化采样、切点/积分选帧、tiers、完整 DP 装箱、16:9 拼图；
-- 增强模式默认 24 帧，笔记上限 4500 字，普通模式与钩子保持不变；
+- 增强模式默认 24 帧，按 6 帧/张拆成多张 16:9 拼图，笔记上限 6000 字；普通模式笔记上限 3000 字；
 - 无官方字幕时可使用 AstrBot STT 做音频转写（0.6.x 系列）；长音频自动分块，避免超过 Provider 10MB 限制；
 - 支持回看、追问、单帧截图、UP 主页、简介/字幕/评论/弹幕清洗、笔记缓存。
 
@@ -58,16 +58,18 @@
 | `quota_exempt_users` | 空 | 豁免用户 ID 白名单（QQ 号） |
 | `frame_count` | 12 | 子代理观看帧数（4~16） |
 | `frame_source` | hotspot | hotspot=热点+均匀保底；uniform=纯均匀 |
-| `subagent_frame_mode` | individual | individual=12 帧原图；contact_sheet_plus=1 张联系图（省 token） |
-| `enhanced_mode` | 关 | 增强模式：变化选帧 + tiers + 完整 DP 装箱 + 16:9 拼图 |
+| `subagent_frame_mode` | individual | individual=12 帧原图；contact_sheet_plus=按 6 帧/张拆成多张联系图 |
+| `frames_per_sheet` | 6 | 普通联系图每张帧数；拆小一些，保证单帧可读 |
+| `enhanced_frames_per_sheet` | 6 | 增强模式每张拼图帧数；24 帧会拆成多张 |
+| `digest_max_chars` | 3000 | 普通模式笔记长度上限 |
+| `enhanced_digest_max_chars` | 6000 | 增强模式笔记长度上限 |
+| `enhanced_mode` | 关 | 增强模式：变化选帧 + tiers + 完整 DP 装箱 + 多张 16:9 拼图 |
 | `enhanced_frame_count` | 24 | 增强模式目标帧数 |
-| `enhanced_digest_max_chars` | 4500 | 增强模式笔记上限（普通 1500） |
 | `enhanced_subagent_timeout` | 300 | 增强模式子代理超时 |
 | `include_pinned_comment` | 开 | 把 UP 置顶评论纳入笔记 |
 | `injection_guard` | 开 | 素材边界防提示注入 |
-| `digest_max_chars` | 1500 | 笔记上限 |
-| `subagent_system_prompt` | 空 | 子代理系统提示词；留空用内置观察器规则 |
-| `subagent_output_instructions` | 空 | 子代理输出格式；留空用内置六段式结构 |
+| `subagent_system_prompt` | 空 | 子代理系统提示词；留空用内置故事整理规则 |
+| `subagent_output_instructions` | 空 | 子代理输出格式；留空用内置故事梗概/连续叙事结构 |
 | `main_model_prompt_template` | 空 | 回传主模型的提示词模板；留空用内置模板，支持 `{digest}` 等占位符 |
 | `ack_enabled` | 开 | 收到请求后先回一句开始提示 |
 | `ack_template_video` / `ack_template_up` | 我去看看…/我去翻一下… | 开始提示文案 |
@@ -96,8 +98,8 @@
 - 用 HSV 变化分做切点、积分和去重选帧；
 - 按帧密度计算 tiers；
 - 完整 DP 装箱；
-- 输出一张 **16:9 矩形拼图**（默认 1280×720，24 帧）；
-- 笔记上限从 1500 字放宽到 4500 字，子代理超时从 180 秒放宽到 300 秒；
+- 输出多张 **16:9 矩形拼图**（默认 1280×720，24 帧按 6 帧/张拆分）；
+- 笔记上限普通模式 3000 字，增强模式 6000 字；增强子代理超时 300 秒；
 - 增强流程失败会自动回退普通模式。
 
 增强模式会忽略 `subagent_frame_mode`，固定输出增强拼图；普通模式仍按原配置工作。

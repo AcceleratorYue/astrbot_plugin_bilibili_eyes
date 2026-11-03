@@ -121,6 +121,12 @@
     ],
     "default": "individual"
   },
+  "frames_per_sheet": {
+    "description": "普通联系图每张帧数",
+    "type": "int",
+    "hint": "contact_sheet_plus 模式下每张拼图放几帧；默认 6，避免一图塞太多",
+    "default": 6
+  },
   "enhanced_mode": {
     "description": "增强模式",
     "type": "bool",
@@ -190,8 +196,8 @@
   "enhanced_digest_max_chars": {
     "description": "增强模式笔记长度上限",
     "type": "int",
-    "hint": "默认 4500；仅增强模式生效",
-    "default": 4500
+    "hint": "默认 6000；仅增强模式生效",
+    "default": 6000
   },
   "enhanced_subagent_timeout": {
     "description": "增强模式子代理超时（秒）",
@@ -205,11 +211,17 @@
     "hint": "默认开启；增强取帧或拼图失败时回退现有普通流程",
     "default": true
   },
+  "enhanced_frames_per_sheet": {
+    "description": "增强模式每张拼图帧数",
+    "type": "int",
+    "hint": "默认 6；24 帧会拆成多张，每张更大更利于连续推理",
+    "default": 6
+  },
   "digest_max_chars": {
     "description": "普通模式笔记长度上限",
     "type": "int",
-    "hint": "子代理输出截断上限；增强模式请用 enhanced_digest_max_chars",
-    "default": 1500
+    "hint": "子代理输出截断上限；默认 3000。增强模式请用 enhanced_digest_max_chars",
+    "default": 3000
   },
   "subagent_timeout": {
     "description": "子代理超时（秒）",
