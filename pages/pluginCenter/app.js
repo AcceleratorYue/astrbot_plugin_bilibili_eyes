@@ -165,8 +165,10 @@ async function loadOverview() {
   try {
     const data = await apiGet("overview");
     renderOverview(data);
+    return true;
   } catch (error) {
     showError(`概览：${error.message}`);
+    return false;
   }
 }
 
@@ -177,8 +179,10 @@ async function loadVideos() {
     const data = await apiGet("videos", { q: query, mode, limit: 200 });
     renderVideos(data.rows || []);
     populateTranscriptVideos(data.rows || []);
+    return true;
   } catch (error) {
     showError(`视频记录：${error.message}`);
+    return false;
   }
 }
 
@@ -308,6 +312,7 @@ function bindEvents() {
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.addEventListener("click", () => {
       const view = item.dataset.view;
+      hideError();
       showView(view);
       if (view === "overview") { setTitle("概览", "最近观看、笔记与原文状态。"); loadOverview(); }
       if (view === "videos") { setTitle("视频记录", "按时间查看最近观看。"); loadVideos(); }
@@ -353,7 +358,8 @@ async function init() {
   bindEvents();
   try {
     if (bridge?.ready) await bridge.ready();
-    await Promise.all([loadOverview(), loadVideos()]);
+    const results = await Promise.all([loadOverview(), loadVideos()]);
+    if (results.every(Boolean)) hideError();
     setTitle("概览", "最近观看、笔记与原文状态。");
   } catch (error) {
     showError(`初始化失败：${error.message}`);
