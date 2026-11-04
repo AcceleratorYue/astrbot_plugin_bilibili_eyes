@@ -17,6 +17,14 @@ B站之眼使用 Python 重新实现，未直接复制其源码。
 - 项目：https://github.com/kermond369-nsis/astrbot_plugin_bilibili_watch_Evolution
 - ASR / 音频处理链路的思路参考。
 
+### BangLiGL/astrbot_plugin_video_storyboard
+
+- 项目：https://github.com/BangLiGL/astrbot_plugin_video_storyboard
+- License：项目整体 MIT；`sampling.py` / `decode.py` 为 Apache-2.0 上游适配
+- 极致模式的“可读性/像素预算多图规划、from/to/frame_at、候选帧、转写缓存”
+  设计参考了该项目及其上游 `dsh-video-storyboard`。
+- B站之眼为独立 Python 实现，未直接复制其 Apache-2.0 源码。
+
 ## 运行时依赖
 
 以下依赖由 AstrBot 环境提供，本项目不打包其源码：

@@ -215,6 +215,7 @@ def build_material_prompt(
     question: str | None = None,
     ask: bool = False,
     output_instructions: str | None = None,
+    budget_note: str = "",
 ) -> str:
     video = material.video
     parts = [
@@ -291,14 +292,25 @@ def build_material_prompt(
             for item in items:
                 tier = item.get("tier")
                 suffix = f" tier {int(tier)}" if tier is not None else ""
-                lines.append(
+                label = (
                     f"格 {int(item.get('index', 0))} "
                     f"{_fmt_time(float(item.get('time', 0)))}{suffix}"
                 )
+                if "from" in item and "to" in item:
+                    label += (
+                        f"（区间 {_fmt_time(float(item.get('from', 0)))}"
+                        f"–{_fmt_time(float(item.get('to', 0)))}，"
+                        f"帧 {_fmt_time(float(item.get('frame_at', item.get('time', 0))))}"
+                    )
+                    if item.get("readability"):
+                        label += f"，可读性 {item.get('readability')}"
+                    label += "）"
+                lines.append(label)
             parts.append(f"第 {sheet_no} 张拼图：" + "；".join(lines))
         parts.append(
             "请利用相邻帧之间的动作延续、人物关系、场景变化和前后因果来理解视频；"
             "先想清楚这一段发生了什么，再写笔记，不要只罗列每格有什么元素。"
+            "每格只是该时刻的一帧，不是 from~to 区间的连续录像；近黑/低可读性帧不代表该段没有内容。"
         )
     elif material.frames:
         times = material.frame_times
@@ -316,6 +328,17 @@ def build_material_prompt(
             "画面顺序与时间点（图片按此顺序提供，时间点是近似值）：\n"
             + "；".join(labels)
         )
+    plan = getattr(material, "frame_plan", {}) or {}
+    if isinstance(plan, dict) and plan:
+        text = plan.get("text") or {}
+        visual = plan.get("visual") or {}
+        parts.append(
+            "动态帧预算："
+            f"目标 {plan.get('target_frames', 0)} 帧，实际 {plan.get('actual_frames', 0)} 帧；"
+            f"文本 {text.get('status', 'unknown')}/{float(text.get('score', 0) or 0):.2f}，"
+            f"画面 {float(visual.get('score', 0) or 0):.2f}；"
+            f"{plan.get('reason', '')}"
+        )
     if material.warnings:
         parts.append("已知问题：" + "；".join(material.warnings))
     if question:
@@ -326,6 +349,8 @@ def build_material_prompt(
             "不要复述材料；材料里没有的信息就说不知道。"
         )
     else:
+        if budget_note:
+            parts.append(budget_note)
         parts.append(
             (output_instructions or "").strip()
             or DIGEST_OUTPUT_INSTRUCTIONS
@@ -466,9 +491,13 @@ async def run_digest(
     question: str | None = None,
     system_prompt: str | None = None,
     output_instructions: str | None = None,
+    budget_note: str = "",
 ) -> str:
     prompt = build_material_prompt(
-        material, question=question, output_instructions=output_instructions
+        material,
+        question=question,
+        output_instructions=output_instructions,
+        budget_note=budget_note,
     )
     images = [str(path) for path in material.frames] if visual and material.frames else []
     kwargs: dict[str, Any] = {

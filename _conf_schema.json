@@ -121,6 +121,18 @@
     ],
     "default": "individual"
   },
+  "video_mode": {
+    "description": "视频读取模式",
+    "type": "string",
+    "hint": "auto=按旧 enhanced_mode 兼容；normal=固定12帧；enhanced=固定24帧；extreme=动态帧数+动态笔记预算+可读性拼图",
+    "options": [
+      "auto",
+      "normal",
+      "enhanced",
+      "extreme"
+    ],
+    "default": "auto"
+  },
   "frames_per_sheet": {
     "description": "普通联系图每张帧数",
     "type": "int",
@@ -222,6 +234,85 @@
     "type": "int",
     "hint": "默认 6；24 帧会拆成多张，每张更大更利于连续推理",
     "default": 6
+  },
+  "extreme_max_frames": {
+    "description": "极致模式最大帧数",
+    "type": "int",
+    "hint": "目标帧数上限，默认48；受可读性/图片上限约束",
+    "default": 48
+  },
+  "extreme_max_sheets": {
+    "description": "极致模式最大拼图张数",
+    "type": "int",
+    "hint": "默认8；长视频可增加，但会增加模型输入",
+    "default": 8
+  },
+  "extreme_max_analysis_seconds": {
+    "description": "极致模式最多分析秒数",
+    "type": "int",
+    "hint": "默认3600；超过此时长只分析前段并提示",
+    "default": 3600
+  },
+  "extreme_readability": {
+    "description": "极致模式可读性目标",
+    "type": "string",
+    "hint": "shot=构图；scene=人物动作；text=画面小字。默认scene",
+    "options": [
+      "shot",
+      "scene",
+      "text"
+    ],
+    "default": "scene"
+  },
+  "extreme_note_budget": {
+    "description": "极致模式笔记预算",
+    "type": "string",
+    "hint": "dynamic=按视频体量动态计算；默认dynamic",
+    "options": [
+      "dynamic"
+    ],
+    "default": "dynamic"
+  },
+  "extreme_note_core_min": {
+    "description": "极致核心笔记下限",
+    "type": "int",
+    "default": 1500
+  },
+  "extreme_note_core_max": {
+    "description": "极致核心笔记上限",
+    "type": "int",
+    "default": 9000
+  },
+  "extreme_note_other_min": {
+    "description": "极致其他内容下限",
+    "type": "int",
+    "default": 800
+  },
+  "extreme_note_other_max": {
+    "description": "极致其他内容上限",
+    "type": "int",
+    "default": 3500
+  },
+  "extreme_subagent_timeout": {
+    "description": "极致子代理超时秒",
+    "type": "int",
+    "default": 300
+  },
+  "extreme_fallback_to_enhanced": {
+    "description": "极致取帧失败回退增强",
+    "type": "bool",
+    "default": true
+  },
+  "transcript_ttl_hours": {
+    "description": "字幕/ASR原文缓存小时",
+    "type": "int",
+    "hint": "只存文字，默认168小时；用于二次查询原文",
+    "default": 168
+  },
+  "transcript_max_entries": {
+    "description": "原文缓存最大条数",
+    "type": "int",
+    "default": 200
   },
   "digest_max_chars": {
     "description": "普通模式核心笔记长度上限",

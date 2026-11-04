@@ -20,7 +20,9 @@ import eyes_clean as ec  # noqa: E402
 import eyes_card  # noqa: E402
 import eyes_client as bc  # noqa: E402
 import eyes_enhanced as ee  # noqa: E402
+import eyes_extreme as ex  # noqa: E402
 import eyes_subagent as sa  # noqa: E402
+import eyes_transcript as et  # noqa: E402
 
 
 def test_parse_refs() -> None:
@@ -778,6 +780,224 @@ def test_enhanced_pipeline() -> None:
     print("✅ 增强模式：端到端假流 / 多张拼图 / layout / 提示词")
 
 
+def test_extreme_pipeline() -> None:
+    import main as plugin_main
+    from PIL import Image
+
+    class FakeClient:
+        def get_stream_info(self, bvid, cid):
+            return bc.StreamInfo(
+                video_url="https://example.invalid/video",
+                audio_url="",
+                height=480,
+            )
+
+        def iter_lowres_frames(
+            self, url, fps=2, max_seconds=1200, width=64, height=36
+        ):
+            for index in range(48):
+                color = (index * 7) % 256
+                raw = bytes([color, (index * 13) % 256, 90]) * (width * height)
+                yield index / fps, raw
+
+        def extract_frames(
+            self, url, timestamps, out_dir, height=480, max_mb=3
+        ):
+            out_dir = Path(out_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            pairs = []
+            for index, timestamp in enumerate(timestamps):
+                path = out_dir / f"extreme_{index:02d}.jpg"
+                Image.new("RGB", (320, 180), (index * 17 % 255, 60, 100)).save(path)
+                pairs.append((path, timestamp))
+            return pairs
+
+    with tempfile.TemporaryDirectory() as tmp:
+        plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+        plugin._config = {
+            **plugin_main.DEFAULT_OPTIONS,
+            "video_mode": "extreme",
+            "extreme_max_frames": 12,
+            "extreme_max_sheets": 3,
+            "extreme_readability": "scene",
+            "extreme_sample_fps": 2,
+            "enhanced_sample_fps": 2,
+            "enhanced_max_analysis_seconds": 120,
+            "cache_enabled": False,
+        }
+        plugin._active = {}
+        plugin._client = lambda: FakeClient()
+        plugin._data_dir = lambda: Path(tmp)
+
+        async def run(func, *args):
+            return func(*args)
+
+        plugin._run = run
+        video = bc.VideoInfo(
+            bvid="BV1ext",
+            aid=1,
+            cid=2,
+            page=1,
+            page_count=1,
+            title="极致测试",
+            up_name="UP",
+            up_uid=1,
+            duration=24,
+            desc="",
+        )
+        material = bc.Material(video=video)
+        event = SimpleNamespace(unified_msg_origin="test:GroupMessage:1")
+        asyncio.run(plugin._fill_frames_extreme(material, event))
+        assert material.frames and material.frame_layout
+        assert material.frame_plan
+        assert material.frame_plan["mode"] == "extreme"
+        assert all("from" in item and "to" in item for item in material.frame_layout)
+        assert all("readability" in item for item in material.frame_layout)
+        prompt = sa.build_material_prompt(material)
+        assert "动态帧预算" in prompt and "区间" in prompt
+        assert all(Path(path).exists() for path in material.frames)
+    print("✅ 极致模式：端到端假流 / 动态帧 / 区间元数据 / 提示词")
+
+
+def test_extreme_planner() -> None:
+    def material_for(duration: int, text: str = "", cuts: int = 4):
+        video = bc.VideoInfo(
+            bvid="BV1extreme",
+            aid=1,
+            cid=2,
+            page=1,
+            page_count=1,
+            title="极致测试",
+            up_name="UP",
+            up_uid=1,
+            duration=duration,
+            desc="",
+        )
+        material = bc.Material(video=video)
+        if text:
+            material.subtitles = [
+                (index * max(1.0, duration / 8), text)
+                for index in range(8)
+            ]
+        keyframes = [
+            SimpleNamespace(
+                time=index * duration / max(1, cuts),
+                score=30.0 if index % 2 == 0 else 6.0,
+                via="cut" if index % 2 == 0 else "mark",
+            )
+            for index in range(cuts)
+        ]
+        return material, keyframes
+
+    short, short_keys = material_for(10, cuts=2)
+    short_plan = ex.plan_frames(short, short_keys, max_frames=24, max_sheets=4)
+    assert 4 <= short_plan.target_frames <= 8
+    assert short_plan.actual_frames == 0
+
+    long_material, long_keys = material_for(1800, cuts=12)
+    long_plan = ex.plan_frames(long_material, long_keys, max_frames=48, max_sheets=8)
+    assert long_plan.target_frames > 24
+
+    text_material, text_keys = material_for(
+        76, text="这是一段信息量很高的官方字幕内容，包含人物对白和剧情推进。", cuts=8
+    )
+    text_plan = ex.plan_frames(text_material, text_keys, max_frames=48, max_sheets=8)
+    plain_material, plain_keys = material_for(76, cuts=8)
+    plain_plan = ex.plan_frames(plain_material, plain_keys, max_frames=48, max_sheets=8)
+    assert text_plan.text.score > 0
+    assert text_plan.target_frames <= plain_plan.target_frames
+
+    text_material.comments = [
+        SimpleNamespace(content="评论原文" * 20) for _ in range(8)
+    ]
+    text_plan.actual_frames = 12
+    budget = ex.estimate_note_budget(text_material, text_plan)
+    assert 1500 <= budget.core_chars <= 9000
+    assert 800 <= budget.other_chars <= 3500
+    assert budget.total_chars == budget.core_chars + budget.other_chars
+    assert ex.readability_capacity("text") < ex.readability_capacity("scene")
+    print("✅ 极致模式：动态帧预算 / 文本画像 / 笔记预算")
+
+
+def test_video_mode() -> None:
+    import main as plugin_main
+
+    plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+    base = {**plugin_main.DEFAULT_OPTIONS, "enhanced_mode": False}
+    plugin._config = {**base, "video_mode": "auto"}
+    assert plugin._video_mode() == "normal"
+    plugin._config["enhanced_mode"] = True
+    assert plugin._video_mode() == "enhanced"
+    plugin._config["video_mode"] = "extreme"
+    assert plugin._video_mode() == "extreme"
+    assert plugin._cache_variant() == "extreme"
+    print("✅ 三模式：auto/legacy/enhanced/extreme 选择")
+
+
+def test_transcript_direct_read() -> None:
+    import main as plugin_main
+
+    official = [(0.0, "第一句官方字幕"), (12.0, "本体已经接入用户钱包")]
+    asr = [(0.0, "第一句 ASR"), (12.5, "本体已经接入用户钱包啦")]
+    with tempfile.TemporaryDirectory() as tmp:
+        store = et.TranscriptStore(Path(tmp), ttl_hours=1, max_entries=5)
+        assert store.save(
+            "BV1read", 1, "回读测试", 30, official, asr, "available", "available", "fp"
+        )
+        loaded = store.load("BV1read", 1)
+        assert loaded and loaded["official"] and loaded["asr"]
+        result = et.search(loaded, query="钱包", max_lines=10)
+        text = et.format_result(loaded, result)
+        assert "官方字幕" in text and "ASR（约）" in text
+        assert "本体已经接入用户钱包" in text
+
+        video = bc.VideoInfo(
+            bvid="BV1read",
+            aid=1,
+            cid=2,
+            page=1,
+            page_count=1,
+            title="回读测试",
+            up_name="UP",
+            up_uid=1,
+            duration=30,
+            desc="",
+        )
+        material = bc.Material(video=video)
+        material.subtitles = official
+        material.asr_subtitles = asr
+        material.official_status = "available"
+        material.asr_status = "available"
+        plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+        plugin._config = {**plugin_main.DEFAULT_OPTIONS, "enabled": True}
+        plugin._materials = eyes_cache.MaterialStore(60, 2)
+        plugin._session_materials = {
+            "test:GroupMessage:1": {
+                "kind": "video",
+                "bvid": "BV1read",
+                "page": 1,
+            }
+        }
+        plugin._transcripts = store
+        plugin._data_dir = lambda: Path(tmp)
+        event = SimpleNamespace(unified_msg_origin="test:GroupMessage:1")
+        plugin._materials.put(event.unified_msg_origin, material, "digest")
+        answer = asyncio.run(
+            plugin.tool_transcript(event, query="钱包", max_lines="5")
+        )
+        text = answer.content[0].text
+        assert "官方字幕" in text and "ASR（约）" in text
+        assert "本体已经接入用户钱包" in text
+
+        # 内存材料清掉后，仍能从磁盘原文缓存读取。
+        plugin._materials.drop(event.unified_msg_origin)
+        answer = asyncio.run(
+            plugin.tool_transcript(event, query="钱包", max_lines="5")
+        )
+        assert "本体已经接入用户钱包" in answer.content[0].text
+    print("✅ 原文直读：缓存落盘 / 关键词 / 来源标注 / 子代理旁路")
+
+
 def test_schema() -> None:
     schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
     required = {
@@ -808,6 +1028,14 @@ def test_schema() -> None:
         "enhanced_subagent_timeout",
         "enhanced_fallback_to_normal",
         "enhanced_frames_per_sheet",
+        "extreme_max_frames",
+        "extreme_max_sheets",
+        "extreme_max_analysis_seconds",
+        "extreme_readability",
+        "extreme_note_core_max",
+        "extreme_note_other_max",
+        "transcript_ttl_hours",
+        "transcript_max_entries",
     }
     assert required <= set(schema), required - set(schema)
     assert schema["frame_count"]["default"] == 12
@@ -822,10 +1050,15 @@ def test_schema() -> None:
     assert schema["enhanced_other_max_chars"]["default"] == 1500
     assert schema["frames_per_sheet"]["default"] == 6
     assert schema["enhanced_frames_per_sheet"]["default"] == 6
+    assert schema["video_mode"]["default"] == "auto"
+    assert schema["extreme_max_frames"]["default"] == 48
+    assert schema["extreme_max_sheets"]["default"] == 8
+    assert schema["extreme_max_analysis_seconds"]["default"] == 3600
+    assert schema["extreme_readability"]["default"] == "scene"
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.9.0" in meta
+    assert "version: 0.10.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -877,6 +1110,10 @@ def main() -> int:
     test_audio_pipeline()
     test_enhanced_core()
     test_enhanced_pipeline()
+    test_extreme_pipeline()
+    test_extreme_planner()
+    test_video_mode()
+    test_transcript_direct_read()
     test_schema()
     print("\n全部离线测试通过")
     return 0

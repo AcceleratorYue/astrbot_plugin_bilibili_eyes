@@ -214,13 +214,13 @@ def select_keyframes(
     return _thin_keyframes(selected, count)
 
 
-def select_keyframes_from_stream(
+def sample_from_stream(
     client,
     stream_url: str,
     duration: float,
     config: EnhancedConfig,
-) -> list[Keyframe]:
-    """从 B站视频流低分辨率采样并选出关键帧。"""
+) -> list[FrameSample]:
+    """只扫描低分辨率画面，返回变化样本，供极致模式复用。"""
 
     max_seconds = min(
         max(1, int(duration or config.max_analysis_seconds)),
@@ -233,7 +233,22 @@ def select_keyframes_from_stream(
         width=SCAN_W,
         height=SCAN_H,
     )
-    samples = build_samples(frames)
+    return build_samples(frames)
+
+
+def select_keyframes_from_stream(
+    client,
+    stream_url: str,
+    duration: float,
+    config: EnhancedConfig,
+) -> list[Keyframe]:
+    """从 B站视频流低分辨率采样并选出关键帧。"""
+
+    samples = sample_from_stream(client, stream_url, duration, config)
+    max_seconds = min(
+        max(1, int(duration or config.max_analysis_seconds)),
+        max(1, int(config.max_analysis_seconds)),
+    )
     return select_keyframes(samples, float(max_seconds), config)
 
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import functools
+import hashlib
+import json
 import re
 import sys
 import time
@@ -21,7 +23,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 # AstrBot 热重载通常只重新 import main，子模块会留在 sys.modules 里，
 # 导致代码更新后仍跑到旧的 eyes_client/eyes_subagent。这里先清掉再导入。
-for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean", "eyes_enhanced"):
+for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean", "eyes_enhanced", "eyes_extreme", "eyes_transcript"):
     sys.modules.pop(_module_name, None)
 
 from astrbot.api import logger
@@ -34,13 +36,15 @@ import eyes_audio
 import eyes_clean as ec
 import eyes_client as bc
 import eyes_enhanced as ee
+import eyes_extreme as ex
 import eyes_subagent as sa
+import eyes_transcript as et
 from eyes_cache import MaterialStore, NoteCache
 from eyes_card import extract_bilibili_card_url
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_eyes"
 LOG = "[B站之眼]"
-TOOL_NAMES = ("bilibili_watch", "bilibili_ask", "bilibili_frame")
+TOOL_NAMES = ("bilibili_watch", "bilibili_ask", "bilibili_frame", "bilibili_transcript")
 MAX_CONTEXT_CHARS = 1200
 
 
@@ -71,6 +75,7 @@ DEFAULT_OPTIONS: dict = {
     "frame_height": 480,
     "frame_source": "hotspot",
     "subagent_frame_mode": "individual",
+    "video_mode": "auto",
     "enhanced_mode": False,
     "enhanced_frame_count": 24,
     "enhanced_sample_fps": 2,
@@ -87,6 +92,19 @@ DEFAULT_OPTIONS: dict = {
     "enhanced_subagent_timeout": 300,
     "enhanced_fallback_to_normal": True,
     "enhanced_frames_per_sheet": 6,
+    "extreme_max_frames": 48,
+    "extreme_max_sheets": 8,
+    "extreme_max_analysis_seconds": 3600,
+    "extreme_readability": "scene",
+    "extreme_note_budget": "dynamic",
+    "extreme_note_core_min": 1500,
+    "extreme_note_core_max": 9000,
+    "extreme_note_other_min": 800,
+    "extreme_note_other_max": 3500,
+    "extreme_subagent_timeout": 300,
+    "extreme_fallback_to_enhanced": True,
+    "transcript_ttl_hours": 168,
+    "transcript_max_entries": 200,
     "digest_max_chars": 2000,
     "digest_other_max_chars": 1000,
     "subagent_timeout": 180,
@@ -180,8 +198,9 @@ class BilibiliEyesPlugin(Star):
         self._video_results: dict[str, tuple[float, bc.Material, str | None]] = {}
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
+        self._transcripts = None
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.9.0 已加载")
+        logger.info(f"{LOG} 插件 v0.10.0 已加载")
 
     async def initialize(self) -> None:
         self._init_cache()
@@ -918,6 +937,60 @@ class BilibiliEyesPlugin(Star):
             return text_result("这次没答上来，稍后再试。")
         return text_result(answer)
 
+    @filter.llm_tool(name="bilibili_transcript")
+    async def tool_transcript(
+        self,
+        event: AstrMessageEvent,
+        query: str = "",
+        start: str = "0",
+        end: str = "0",
+        source: str = "both",
+        max_lines: str = "20",
+        bvid: str = "",
+    ):
+        """查询最近看过的 B站视频的官方字幕/ASR 原文，不经过子代理。
+
+        Args:
+            query(string): 要查找的关键词或原话片段；为空时按时间范围查
+            start(string): 起始秒数；0 表示不限
+            end(string): 结束秒数；0 表示到结尾
+            source(string): official / asr / both
+            max_lines(string): 最多返回多少行，1~50
+            bvid(string): 可选；不填使用当前会话最近看过的视频
+        """
+
+        from mcp.types import CallToolResult, TextContent
+
+        def text_result(text: str):
+            return CallToolResult(content=[TextContent(type="text", text=text)])
+
+        if not self._bool_opt("enabled"):
+            return text_result("B站观看功能未启用。")
+        doc, error = self._transcript_doc_for(event, bvid)
+        if error or not doc:
+            return text_result(error or "没有可用的字幕/ASR 原文缓存。")
+        try:
+            start_value = float(start or 0)
+        except Exception:
+            start_value = 0.0
+        try:
+            end_value = float(end or 0)
+        except Exception:
+            end_value = 0.0
+        try:
+            line_value = int(max_lines or 20)
+        except Exception:
+            line_value = 20
+        result = et.search(
+            doc,
+            query=query,
+            start=start_value,
+            end=end_value,
+            source=source,
+            max_lines=line_value,
+        )
+        return text_result(et.format_result(doc, result))
+
     @filter.llm_tool(name="bilibili_frame")
     async def tool_frame(self, event: AstrMessageEvent, time_point: str, bvid: str = ""):
         """查看最近看过视频的某一帧画面；用户明确要截图/看某时间点时使用。
@@ -1005,8 +1078,19 @@ class BilibiliEyesPlugin(Star):
 
     # -- 观看流程 -----------------------------------------------------
 
+    def _video_mode(self) -> str:
+        raw = str(self._opt("video_mode") or "auto").strip().lower()
+        if raw in ("normal", "enhanced", "extreme"):
+            return raw
+        return "enhanced" if self._bool_opt("enhanced_mode") else "normal"
+
     def _cache_variant(self) -> str:
-        return "enhanced" if self._bool_opt("enhanced_mode") else ""
+        mode = self._video_mode()
+        if mode == "extreme":
+            return "extreme"
+        if mode == "enhanced":
+            return "enhanced"
+        return ""
 
     @staticmethod
     def _video_key(ref: str, page: int | None, variant: str = "") -> str:
@@ -1051,6 +1135,7 @@ class BilibiliEyesPlugin(Star):
                 logger.info(f"{LOG} single-flight 复用：{key}")
                 return hit[1], hit[2]
             material = await self._collect(job, ref, page, event)
+            self._save_transcript(material)
             digest = await self._digest(material, event)
             self._video_results[key] = (time.monotonic(), material, digest)
             self._prune_video_results()
@@ -1099,6 +1184,27 @@ class BilibiliEyesPlugin(Star):
             template=template,
         )
 
+    @staticmethod
+    def _stt_fingerprint(provider) -> str:
+        """只保存配置摘要，不保存 API Key 或完整配置。"""
+
+        try:
+            meta = provider.meta()
+            meta_id = str(getattr(meta, "id", "") or "")
+            config = getattr(provider, "provider_config", {}) or {}
+            summary = {
+                "id": meta_id,
+                "model": config.get("model")
+                or config.get("stt_model")
+                or config.get("model_name"),
+                "lang": config.get("lang") or config.get("language"),
+            }
+            return hashlib.sha256(
+                json.dumps(summary, ensure_ascii=False, sort_keys=True).encode()
+            ).hexdigest()[:16]
+        except Exception:
+            return ""
+
     async def _get_stt_provider(self, event=None):
         """按配置选择 AstrBot STT Provider；空配置跟随当前会话。"""
 
@@ -1139,6 +1245,7 @@ class BilibiliEyesPlugin(Star):
         """按模式用 AstrBot STT 补音频转写。"""
 
         if not self._bool_opt("audio_transcription_enabled"):
+            material.asr_status = "disabled"
             return
         mode = str(
             self._opt("audio_transcription_mode") or "no_subtitle"
@@ -1146,17 +1253,21 @@ class BilibiliEyesPlugin(Star):
         if mode not in ("no_subtitle", "always"):
             mode = "no_subtitle"
         if not self._bool_opt("include_subtitle"):
+            material.asr_status = "disabled"
             return
         if material.subtitles and mode != "always":
+            material.asr_status = "skipped"
             return
         duration = int(material.video.duration or 0)
         if duration <= 0:
+            material.asr_status = "unknown_duration"
             material.warnings.append("音频转录跳过：视频时长未知")
             return
         max_seconds = max(30, self._int_opt("audio_transcription_max_seconds", 600))
         transcribed_seconds = min(duration, max_seconds)
         provider = await self._get_stt_provider(event)
         if provider is None:
+            material.asr_status = "not_configured"
             logger.warning(
                 f"{LOG} ASR 跳过：没有可用的 STT Provider"
                 f"（配置={self._opt('audio_transcription_provider_id') or '当前会话'}）"
@@ -1165,6 +1276,7 @@ class BilibiliEyesPlugin(Star):
                 "音频转录已开启，但没有可用的 STT Provider（请先在 AstrBot 配置语音转文字）"
             )
             return
+        material.asr_fingerprint = self._stt_fingerprint(provider)
         job.stage = "音频转录"
         client = self._client()
         cache_dir = self._data_dir() / "cache"
@@ -1188,6 +1300,7 @@ class BilibiliEyesPlugin(Star):
             )
             source = info.audio_url or info.video_url
             if not source:
+                material.asr_status = "no_audio"
                 material.warnings.append("音频转录跳过：没有可用的音频流")
                 return
             transcriber = eyes_audio.AudioTranscriber(provider)
@@ -1243,9 +1356,11 @@ class BilibiliEyesPlugin(Star):
                 finally:
                     audio_path.unlink(missing_ok=True)
             if not parts:
+                material.asr_status = "failed"
                 material.warnings.append("音频转录失败：所有分块都没有结果")
                 return
             merged = ec.merge_subtitles(parts)
+            material.asr_status = "available"
             material.audio_transcript_partial = transcribed_seconds < duration
             if failed_chunks:
                 material.warnings.append(
@@ -1283,6 +1398,7 @@ class BilibiliEyesPlugin(Star):
                     f"{total_chunks} chunks"
                 )
         except Exception as exc:
+            material.asr_status = "failed"
             logger.warning(f"{LOG} ASR 异常：{exc}")
             material.warnings.append("音频转录失败，已跳过")
 
@@ -1297,6 +1413,9 @@ class BilibiliEyesPlugin(Star):
         if max_minutes > 0 and video.duration > max_minutes * 60:
             raise bc.BiliError("too_long", f"视频时长 {video.duration}s")
         material = bc.Material(video=video)
+        material.official_status = (
+            "pending" if self._bool_opt("include_subtitle") else "disabled"
+        )
         material.video.desc = ec.clean_description(material.video.desc)
         if not self._bool_opt("include_description"):
             material.video.desc = ""
@@ -1332,9 +1451,13 @@ class BilibiliEyesPlugin(Star):
                     client.get_subtitles, player, langs
                 )
                 material.subtitles = ec.merge_subtitles(raw_subtitles)
+                material.official_status = (
+                    "available" if material.subtitles else "absent"
+                )
                 if not material.subtitles:
                     material.warnings.append("无可用字幕（可能是游客态或视频本身无字幕）")
         except bc.BiliError as exc:
+            material.official_status = "failed"
             material.warnings.append(f"播放器信息不可用：{exc.reason}")
         await self._transcribe_audio_if_needed(material, event, job)
         if self._bool_opt("include_comments"):
@@ -1375,24 +1498,49 @@ class BilibiliEyesPlugin(Star):
         if visual:
             await self._fill_frames(material, event)
         try:
-            enhanced = self._bool_opt("enhanced_mode")
-            digest = await sa.run_digest(
-                self.context,
-                provider_id,
-                material,
-                max_chars=self._int_opt(
+            mode = self._video_mode()
+            enhanced = mode == "enhanced"
+            extreme = mode == "extreme"
+            if extreme:
+                budget = ex.estimate_note_budget(
+                    material,
+                    material.frame_plan,
+                    self._int_opt("extreme_note_core_min", 1500),
+                    self._int_opt("extreme_note_core_max", 9000),
+                    self._int_opt("extreme_note_other_min", 800),
+                    self._int_opt("extreme_note_other_max", 3500),
+                )
+                core_max = budget.core_chars
+                other_max = budget.other_chars
+                material.warnings.append(
+                    f"极致笔记预算：核心 {core_max} / 其他 {other_max}；{budget.reason}"
+                )
+            else:
+                core_max = self._int_opt(
                     "enhanced_digest_max_chars" if enhanced else "digest_max_chars",
                     4500 if enhanced else 2000,
-                ),
-                other_max_chars=self._int_opt(
+                )
+                other_max = self._int_opt(
                     "enhanced_other_max_chars"
                     if enhanced
                     else "digest_other_max_chars",
                     1500 if enhanced else 1000,
-                ),
+                )
+            digest = await sa.run_digest(
+                self.context,
+                provider_id,
+                material,
+                max_chars=core_max,
+                other_max_chars=other_max,
                 timeout=self._int_opt(
-                    "enhanced_subagent_timeout" if enhanced else "subagent_timeout",
-                    300 if enhanced else 180,
+                    "extreme_subagent_timeout"
+                    if extreme
+                    else (
+                        "enhanced_subagent_timeout"
+                        if enhanced
+                        else "subagent_timeout"
+                    ),
+                    300 if (enhanced or extreme) else 180,
                 ),
                 retries=self._int_opt("subagent_retries", 1),
                 visual=visual,
@@ -1400,6 +1548,13 @@ class BilibiliEyesPlugin(Star):
                 output_instructions=str(
                     self._opt("subagent_output_instructions") or ""
                 ).strip(),
+                budget_note=(
+                    f"本次极致模式笔记预算：核心约 {core_max} 字，其他约 {other_max} 字。"
+                    "优先保留故事梗概、连续叙事、关键对白和证据；"
+                    "超预算时压缩关键画面列表/重复解释/低信息评论，不要截断故事。"
+                    if extreme
+                    else ""
+                ),
             )
             if self._cache is not None:
                 self._cache.set(
@@ -1416,20 +1571,43 @@ class BilibiliEyesPlugin(Star):
             return digest
 
     async def _fill_frames(self, material: bc.Material, event) -> None:
-        if not self._bool_opt("enhanced_mode"):
+        mode = self._video_mode()
+        if mode == "normal":
             await self._fill_frames_normal(material, event)
             return
+        if mode == "enhanced":
+            try:
+                ok = await self._fill_frames_enhanced(material, event)
+            except Exception as exc:
+                logger.warning(f"{LOG} 增强取帧异常：{exc}")
+                ok = False
+            if ok:
+                return
+            if not self._bool_opt("enhanced_fallback_to_normal"):
+                material.warnings.append("增强取帧失败，未回退普通模式")
+                return
+            material.warnings.append("增强取帧失败，已回退普通模式")
+            await self._fill_frames_normal(material, event)
+            return
+        # extreme：失败时优先回退增强，再回退普通。
         try:
-            ok = await self._fill_frames_enhanced(material, event)
+            ok = await self._fill_frames_extreme(material, event)
         except Exception as exc:
-            logger.warning(f"{LOG} 增强取帧异常：{exc}")
+            logger.warning(f"{LOG} 极致取帧异常：{exc}")
             ok = False
         if ok:
             return
-        if not self._bool_opt("enhanced_fallback_to_normal"):
-            material.warnings.append("增强取帧失败，未回退普通模式")
-            return
-        material.warnings.append("增强取帧失败，已回退普通模式")
+        material.frame_plan = {}
+        if self._bool_opt("extreme_fallback_to_enhanced"):
+            material.warnings.append("极致取帧失败，已回退增强模式")
+            try:
+                ok = await self._fill_frames_enhanced(material, event)
+            except Exception as exc:
+                logger.warning(f"{LOG} 极致回退增强异常：{exc}")
+                ok = False
+            if ok:
+                return
+        material.warnings.append("极致取帧失败，已回退普通模式")
         await self._fill_frames_normal(material, event)
 
     async def _fill_frames_enhanced(
@@ -1546,6 +1724,191 @@ class BilibiliEyesPlugin(Star):
         material.warnings.append(
             f"增强模式：{total_frames} 帧 / {len(sheet_paths)} 张拼图，"
             f"每张最多 {per_sheet} 帧"
+        )
+        return True
+
+    async def _fill_frames_extreme(
+        self, material: bc.Material, event
+    ) -> bool:
+        """极致模式：文本/画面画像 → 动态帧数 → 可读性多图。"""
+
+        client = self._client()
+        job = self._active.get(event.unified_msg_origin)
+        if job:
+            job.stage = "极致取帧"
+        try:
+            info = await self._run(
+                client.get_stream_info,
+                material.video.bvid,
+                material.video.cid,
+            )
+        except Exception as exc:
+            logger.warning(f"{LOG} 极致模式取流失败：{exc}")
+            return False
+        duration = float(material.video.duration or 0)
+        scan_cfg = ee.EnhancedConfig(
+            frame_count=max(4, min(64, self._int_opt("extreme_max_frames", 48))),
+            sample_fps=max(1, min(4, self._int_opt("enhanced_sample_fps", 2))),
+            max_analysis_seconds=max(
+                30, self._int_opt("extreme_max_analysis_seconds", 3600)
+            ),
+            cut_abs=float(self._int_opt("enhanced_cut_abs", 12)),
+            cut_spike=float(self._opt("enhanced_cut_spike") or 2.5),
+            cut_min_gap=float(self._opt("enhanced_cut_min_gap") or 0.4),
+            integral_seconds=float(self._opt("enhanced_integral_seconds") or 3),
+            dup_min=float(self._opt("enhanced_dup_min") or 8),
+            silent_floor_seconds=float(
+                self._opt("enhanced_silent_floor_seconds") or 20
+            ),
+            sheet_width=max(640, self._int_opt("enhanced_sheet_width", 1280)),
+        )
+        scan_cfg.sheet_height = max(360, int(round(scan_cfg.sheet_width * 9 / 16)))
+        if duration > scan_cfg.max_analysis_seconds:
+            material.warnings.append(
+                f"极致模式仅分析前 {scan_cfg.max_analysis_seconds} 秒"
+            )
+        try:
+            samples = await self._run(
+                ee.sample_from_stream,
+                client,
+                info.video_url,
+                duration,
+                scan_cfg,
+            )
+        except Exception as exc:
+            logger.warning(f"{LOG} 极致模式扫描失败：{exc}")
+            return False
+        if not samples:
+            return False
+        pre_keyframes = ee.select_keyframes(samples, duration, scan_cfg)
+        plan = ex.plan_frames(
+            material,
+            pre_keyframes,
+            max_frames=self._int_opt("extreme_max_frames", 48),
+            max_sheets=self._int_opt("extreme_max_sheets", 8),
+            readability=str(self._opt("extreme_readability") or "scene"),
+        )
+        if plan.target_frames <= 0:
+            return False
+        material.frame_plan = plan.to_dict()
+        target = max(1, int(plan.target_frames))
+        target_cfg = ee.EnhancedConfig(
+            frame_count=target,
+            sample_fps=scan_cfg.sample_fps,
+            max_analysis_seconds=scan_cfg.max_analysis_seconds,
+            cut_abs=scan_cfg.cut_abs,
+            cut_spike=scan_cfg.cut_spike,
+            cut_min_gap=scan_cfg.cut_min_gap,
+            integral_seconds=scan_cfg.integral_seconds,
+            dup_min=scan_cfg.dup_min,
+            silent_floor_seconds=scan_cfg.silent_floor_seconds,
+            sheet_width=scan_cfg.sheet_width,
+            sheet_height=scan_cfg.sheet_height,
+            gutter=scan_cfg.gutter,
+        )
+        keyframes = ee.select_keyframes(samples, duration, target_cfg)
+        if not keyframes:
+            return False
+        out_dir = self._data_dir() / "frames" / material.video.bvid / "extreme"
+        timestamps = [round(float(item.time), 1) for item in keyframes]
+        pairs = await self._run(
+            client.extract_frames,
+            info.video_url,
+            timestamps,
+            out_dir,
+            self._int_opt("frame_height", 480),
+            float(self._int_opt("max_frame_mb", 3)),
+        )
+        if not pairs:
+            return False
+        per_sheet = max(2, min(12, int(plan.cells_per_sheet or 6)))
+        max_sheets = max(1, min(12, int(plan.max_sheets or 8)))
+        pairs = pairs[: per_sheet * max_sheets]
+        all_times = [round(float(seconds), 2) for _path, seconds in pairs]
+        sheet_paths: list[Path] = []
+        flat_layout: list[dict] = []
+        for sheet_index in range(0, len(pairs), per_sheet):
+            chunk = pairs[sheet_index : sheet_index + per_sheet]
+            if not chunk:
+                continue
+            tiers = ee.assign_tiers([seconds for _path, seconds in chunk])
+            segments = ee.split_one_bin(tiers, bin_cost=1000)
+            if not segments:
+                continue
+            if len(segments) > 1:
+                chunk = chunk[: len(segments[0])]
+                tiers = tiers[: len(segments[0])]
+            sheet_frames = [
+                ee.SheetFrame(time=float(seconds), path=path, tier=int(tier))
+                for (path, seconds), tier in zip(chunk, tiers)
+            ]
+            cells = ee.solve(tiers, bin_cost=1000)["cells"]
+            sheet_no = len(sheet_paths) + 1
+            sheet_path = out_dir / f"extreme_sheet_{sheet_no:02d}.jpg"
+            layout = await self._run(
+                ee.compose_sheet,
+                sheet_frames,
+                cells,
+                sheet_path,
+                scan_cfg.sheet_width,
+                scan_cfg.sheet_height,
+                scan_cfg.gutter,
+            )
+            if not layout.cells:
+                continue
+            for cell in layout.cells:
+                item = dict(cell)
+                stamp = float(item.get("time", 0))
+                local_index = min(
+                    range(len(chunk)),
+                    key=lambda pos: abs(float(chunk[pos][1]) - stamp),
+                )
+                global_index = sheet_index + local_index
+                previous = all_times[global_index - 1] if global_index > 0 else 0.0
+                following = (
+                    all_times[global_index + 1]
+                    if global_index + 1 < len(all_times)
+                    else duration
+                )
+                item["sheet"] = sheet_no
+                item["frame_at"] = round(stamp, 2)
+                item["from"] = round((previous + stamp) / 2, 2)
+                item["to"] = round((stamp + following) / 2, 2)
+                item["readability"] = ex.readability_label(
+                    float(item.get("w") or 0), float(item.get("h") or 0)
+                )
+                try:
+                    from PIL import Image
+
+                    image_path = chunk[index][0]
+                    with Image.open(image_path).convert("L") as image:
+                        item["dark"] = bool(
+                            sum(image.resize((32, 32)).getdata()) / 1024 < 8
+                        )
+                except Exception:
+                    item["dark"] = False
+                flat_layout.append(item)
+            sheet_paths.append(layout.sheet)
+        if not sheet_paths:
+            return False
+        material.frames = sheet_paths
+        material.frame_times = [-1.0] * len(sheet_paths)
+        material.frame_layout = flat_layout
+        material.enhanced_sheet = True
+        plan.actual_frames = len(flat_layout)
+        material.frame_plan = plan.to_dict()
+        material.warnings.extend(plan.warnings)
+        if len(flat_layout) < target:
+            material.warnings.append(
+                f"极致模式实际保留 {len(flat_layout)}/{target} 帧，存在证据缺口"
+            )
+        material.warnings.append(
+            f"极致模式：{len(flat_layout)} 帧 / {len(sheet_paths)} 张拼图；"
+            f"目标 {target} 帧，{plan.reason}"
+        )
+        logger.info(
+            f"{LOG} 极致取帧：{material.video.bvid} "
+            f"{len(flat_layout)}/{target} 帧 / {len(sheet_paths)} 张"
         )
         return True
 
@@ -1692,6 +2055,80 @@ class BilibiliEyesPlugin(Star):
             return sheets, layout
         except Exception:
             return [], []
+
+    def _transcript_store(self) -> et.TranscriptStore:
+        if self._transcripts is None:
+            self._transcripts = et.TranscriptStore(
+                self._data_dir() / "transcripts",
+                self._int_opt("transcript_ttl_hours", 168),
+                self._int_opt("transcript_max_entries", 200),
+            )
+        return self._transcripts
+
+    def _save_transcript(self, material: bc.Material) -> None:
+        try:
+            if not material.subtitles and not material.asr_subtitles:
+                return
+            video = material.video
+            official = material.subtitles
+            asr = material.asr_subtitles
+            official_status = material.official_status
+            if material.subtitle_source == "asr":
+                asr = asr or official
+                official = []
+                official_status = "absent"
+            self._transcript_store().save(
+                video.bvid,
+                video.page,
+                video.title,
+                video.duration,
+                official,
+                asr,
+                official_status,
+                material.asr_status,
+                material.asr_fingerprint,
+            )
+        except Exception as exc:
+            logger.warning(f"{LOG} 原文缓存写入失败：{exc}")
+
+    def _transcript_doc_for(
+        self, event, bvid: str = ""
+    ) -> tuple[dict | None, str]:
+        """优先内存材料，其次磁盘原文缓存；不触发抓取。"""
+
+        umo = event.unified_msg_origin
+        session = self._session_materials.get(umo) or {}
+        wanted = ""
+        if bvid:
+            refs = bc.extract_video_refs(str(bvid))
+            wanted = (refs[0] if refs else str(bvid)).strip().upper()
+        current = str(session.get("bvid") or "").strip().upper()
+        if wanted and current and wanted not in current and current not in wanted:
+            return None, f"最近看的是 {current}，不是 {wanted}；请先看目标视频。"
+        target = wanted or current
+        page = int(session.get("page") or 1)
+        if not target:
+            return None, "最近没有看过的视频；请先让我看一个视频再查原文。"
+        try:
+            hit = self._materials.get(umo)
+        except Exception:
+            hit = None
+        if hit:
+            material = hit[0]
+            if str(getattr(material.video, "bvid", "")) == target:
+                doc = et.doc_from_material(material)
+                if doc.get("official") or doc.get("asr"):
+                    return doc, ""
+        try:
+            doc = self._transcript_store().load(target, page)
+        except Exception:
+            doc = None
+        if not doc:
+            return None, (
+                f"没有 {target} 的字幕/ASR 原文缓存；"
+                "请先让我看一次这个视频，或重新观看后再查。"
+            )
+        return doc, ""
 
     def _data_dir(self) -> Path:
         try:

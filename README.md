@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.9.0>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.10.0>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,18 +12,21 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.9.0
+## 当前版本 v0.10.0
 
-- 新增默认关闭的 **增强模式**：低分辨率变化采样、切点/积分选帧、tiers、完整 DP 装箱、16:9 拼图；
-- 增强模式默认 24 帧，按 6 帧/张拆成多张 16:9 拼图；
+- 三种读取模式：普通、增强、**极致模式**；
+  - 普通/增强的固定帧数与固定笔记预算保持不变；
+  - 极致模式按视频时长、字幕/ASR 信息量、画面变化动态决定帧数；
+  - 极致模式使用动态笔记预算，避免长视频被固定字数截断；
 - 笔记拆成“核心内容 + 其他客观内容”，评论区原文不再被简单删减：
-  - 普通模式：核心 2000 字 + 其他 1000 字；
-  - 增强模式：核心 4500 字 + 其他 1500 字；
-- 缓存版本升到 v6，旧版单张拼图/逐帧笔记不会继续复用。
-- 无官方字幕时可使用 AstrBot STT 做音频转写（0.6.x 系列）；长音频自动分块，避免超过 Provider 10MB 限制；
+  - 普通：核心 2000 + 其他 1000；
+  - 增强：核心 4500 + 其他 1500；
+  - 极致：核心 1500~9000 + 其他 800~3500，按视频体量动态计算；
+- 新增 `bilibili_transcript`：主模型可直接查询官方字幕/ASR 原文，不再经过子代理；
+- 原文缓存独立落盘，内存材料过期/重启后仍可回查；
 - 支持回看、追问、单帧截图、UP 主页、简介/字幕/评论/弹幕清洗、笔记缓存。
 
-[完整版本记录](CHANGELOG.md) · [增强模式方案](docs/增强模式落地方案_20261102.md) · [参考项目调研](docs/调研报告_dsh-see-now_20261102.md) · [安全策略](SECURITY.md) · [许可证](LICENSE)
+[完整版本记录](CHANGELOG.md) · [极致模式设计](docs/动态截帧方案设计_20261104.md) · [原文直读设计](docs/二次查询直接取原文方案_20261104.md) · [安全策略](SECURITY.md) · [许可证](LICENSE)
 
 ## 触发方式
 
@@ -31,7 +34,7 @@
 | --- | --- |
 | 自然语言 | 仅支持视频：@bot 且消息含 B 站视频链接或 B 站小程序卡片即触发；**UP 主不支持自然语言** |
 | 指令 | `/看视频 <链接/BV>`、`/看主页 <UID/链接/用户名>`、`/bili状态`（检查 SESSDATA 与当前 UID） |
-| 工具 | `bilibili_watch`（看视频）、`bilibili_ask`（追问）、`bilibili_frame`（截图）；UP 仅限 `/看主页` 指令 |
+| 工具 | `bilibili_watch`（看视频）、`bilibili_ask`（追问）、`bilibili_transcript`（查原文）、`bilibili_frame`（截图）；UP 仅限 `/看主页` 指令 |
 
 `/看主页` 的 UID 支持宽容输入：`2431982`、`uid:2431982`、`uid：2431982`、
 `UID:2431982`、`uid 2431982`、`uid2431982` 都可以，大小写和全/半角冒号不影响。
@@ -39,7 +42,32 @@
 看完视频后 30 分钟内可以直接追问（例如「置顶评论是啥」「什么时候发布的」），
 插件会自动复用当时的摘要，不需要重新看一遍。需要具体画面时，主模型可调用
 `bilibili_frame` 返回某一帧；追问由 `bilibili_ask` 基于会话材料回答，不会重新抓 B 站。
-| 开关 | `nl_trigger_enabled=false` 时只保留指令（需重载插件） |
+> `nl_trigger_enabled=false` 时只保留指令（需重载插件）。
+
+## 三种模式
+
+新增 `video_mode`，三种模式并存，普通/增强行为保持不变：
+
+| 模式 | 配置 | 帧数 | 笔记预算 | 适合 |
+| --- | --- | --- | --- | --- |
+| 普通 | `normal` | 固定 12 | 2000 + 1000 | 日常快速看 |
+| 增强 | `enhanced` | 固定 24 | 4500 + 1500 | 日常剧情/整活 |
+| 极致 | `extreme` | 动态 4~48 | 动态核心 + 动态其他 | 长视频/信息密度差异大/不想被截断 |
+
+- `video_mode=auto` 时，旧 `enhanced_mode` 继续生效：
+  - `false` → 普通
+  - `true` → 增强
+- `extreme` 必须显式选择，默认不启用；
+- 极致模式失败时先回退增强，再回退普通。
+
+极致模式的动态帧预算会参考：
+
+- 视频时长；
+- 官方字幕/ASR 的信息量、覆盖度、质量；
+- 画面切镜和变化密度；
+- 可读性目标与最大拼图张数。
+
+笔记预算按视频体量动态计算：核心 1500~9000 字、其他 800~3500 字，取帧/文本越多预算越高；预算会写入子代理提示词，并预留余量。
 
 ## 配置要点
 
@@ -63,8 +91,18 @@
 | `frame_count` | 12 | 子代理观看帧数（4~16） |
 | `frame_source` | hotspot | hotspot=热点+均匀保底；uniform=纯均匀 |
 | `subagent_frame_mode` | individual | individual=12 帧原图；contact_sheet_plus=按 6 帧/张拆成多张联系图 |
+| `video_mode` | auto | auto/normal/enhanced/extreme；auto 兼容旧 `enhanced_mode` |
 | `frames_per_sheet` | 6 | 普通联系图每张帧数；拆小一些，保证单帧可读 |
 | `enhanced_frames_per_sheet` | 6 | 增强模式每张拼图帧数；24 帧会拆成多张 |
+| `extreme_max_frames` | 48 | 极致模式动态帧数上限 |
+| `extreme_max_sheets` | 8 | 极致模式最大拼图张数 |
+| `extreme_max_analysis_seconds` | 3600 | 极致模式最多分析秒数 |
+| `extreme_readability` | scene | shot/scene/text；决定每张可放几帧 |
+| `extreme_note_core_min/max` | 1500/9000 | 极致核心笔记动态范围 |
+| `extreme_note_other_min/max` | 800/3500 | 极致其他内容动态范围 |
+| `extreme_subagent_timeout` | 300 | 极致子代理超时 |
+| `transcript_ttl_hours` | 168 | 字幕/ASR 原文缓存小时 |
+| `transcript_max_entries` | 200 | 原文缓存最大条数 |
 | `digest_max_chars` | 2000 | 普通模式核心笔记上限 |
 | `digest_other_max_chars` | 1000 | 普通模式其他客观内容上限 |
 | `enhanced_digest_max_chars` | 4500 | 增强模式核心笔记上限 |
@@ -111,6 +149,51 @@
 增强模式会忽略 `subagent_frame_mode`，固定输出增强拼图；普通模式仍按原配置工作。
 增强与普通笔记使用不同缓存变体，不会混用。
 
+## 极致模式
+
+`video_mode=extreme` 时启用，默认关闭，不替代普通/增强。
+
+流程：
+
+1. 先取视频信息、字幕/ASR；
+2. 计算文本画像（覆盖度、密度、多样性、质量）；
+3. 低分辨率扫描，计算切镜/画面变化画像；
+4. 按时长基础曲线 + 文本/画面修正得到动态帧数；
+5. 按可读性目标拆成多张拼图；
+6. 每格记录 `from/to/frame_at/readability/dark`；
+7. 按视频体量计算核心/其他笔记预算，写入子代理提示词。
+
+极致模式上限：
+
+- 最大帧数 48；
+- 最大拼图张数 8；
+- 可读性 `shot/scene/text`，分别影响每张格数；
+- 超过可读性/图片上限时减少帧数并写入证据缺口。
+
+## 回读原文
+
+新增工具 `bilibili_transcript`，用于二次查询时**直接读取官方字幕/ASR 原文**，不经过子代理。
+
+```text
+bilibili_transcript(
+    query="关键词",
+    start="40",
+    end="55",
+    source="both",
+    max_lines="20"
+)
+```
+
+- 支持关键词、时间范围；
+- `source=official/asr/both`；
+- 官方字幕和 ASR 分开标注；
+- ASR 时间戳标“约”；
+- 单次最多约 20 行，超限提示缩小范围；
+- 原文只存文字，默认缓存 7 天；内存材料过期/重启后可回退磁盘；
+- 缓存缺失时提示重新观看，不自动重抓/重新 ASR。
+
+`bilibili_ask` 仍用于自然语言总结；问“原话/第几分钟说了什么”时用 `bilibili_transcript`。
+
 ## SESSDATA 怎么获取
 
 1. 用浏览器登录 [bilibili.com](https://www.bilibili.com)；
@@ -125,11 +208,13 @@
 ## 工作流程
 
 1. @ 消息含 B 站链接 → 识别 BV / 分 P / 多链接（只处理第一个）；
-2. 子代理阶段：取视频信息 → 字幕（无字幕时可选 ASR 补转录）→ 热评 → 弹幕密度选热点时间 → 截 12 帧；
-3. 子代理（视觉 provider）看 12 帧 + 字幕/评论，输出客观笔记（不评价、不脑补、带不确定项）；
-4. 主模型收到笔记，用自己的身份和语气回复（多链接时说明只看了第一个）；
-5. 笔记按 BV+分P 缓存 7 天；观看期间再次唤醒 → 发送等待提示（含已工作时间/阶段）；
-6. 错误只以结构化状态交给主模型，由主模型用自己的话说明。
+2. 按 `video_mode` 选择普通/增强/极致；
+3. 取视频信息 → 字幕（无字幕时可选 ASR 补转录）→ 热评 → 弹幕/热点；
+4. 截帧：普通固定 12 帧；增强固定 24 帧多拼图；极致按文本/画面/时长动态；
+5. 子代理（视觉 provider）看画面 + 字幕/评论，输出核心内容 + 其他客观内容；
+6. 主模型收到笔记，用自己的身份和语气回复（多链接时说明只看了第一个）；
+7. 笔记按 BV+分P 缓存；字幕/ASR 原文另存，供 `bilibili_transcript` 二次查询；
+8. 观看期间再次唤醒 → 发送等待提示；错误只以结构化状态交给主模型。
 
 ## 常见问题
 

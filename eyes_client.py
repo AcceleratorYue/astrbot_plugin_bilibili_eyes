@@ -188,8 +188,12 @@ class Material:
     video: VideoInfo
     subtitles: list[tuple[float, str]] = field(default_factory=list)
     subtitle_source: str = "official"
+    official_status: str = "unknown"
     asr_subtitles: list[tuple[float, str]] = field(default_factory=list)
+    asr_status: str = "unknown"
+    asr_fingerprint: str = ""
     audio_transcript_partial: bool = False
+    frame_plan: dict = field(default_factory=dict)
     frame_layout: list[dict] = field(default_factory=list)
     enhanced_sheet: bool = False
     comments: list[CommentItem] = field(default_factory=list)
