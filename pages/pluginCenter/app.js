@@ -1,4 +1,4 @@
-const bridge = window.AstrBotPluginPage;
+const bridge = window.AstrBotPluginView || window.AstrBotPluginPage;
 
 const state = {
   overview: {},
@@ -49,14 +49,39 @@ function statusTag(value) {
   return `<span class="tag ${tone}">${esc(label)}</span>`;
 }
 
+async function requestFallback(endpoint, params = {}, body = null) {
+  const url = new URL(`/astrbot_plugin_bilibili_eyes/${endpoint}`, window.location.origin);
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, value);
+  });
+  const response = await fetch(url, {
+    credentials: "include",
+    method: body === null ? "GET" : "POST",
+    headers: body === null ? {} : { "Content-Type": "application/json" },
+    body: body === null ? undefined : JSON.stringify(body),
+  });
+  let result = {};
+  try { result = await response.json(); } catch { result = {}; }
+  if (!response.ok || result?.success === false) {
+    throw new Error(result?.error || `HTTP ${response.status}`);
+  }
+  return result;
+}
+
 async function apiGet(endpoint, params = {}) {
-  const result = await bridge.apiGet(endpoint, params);
+  if (!bridge) throw new Error("AstrBot 插件页桥接未注入");
+  const result = bridge.apiGet
+    ? await bridge.apiGet(endpoint, params)
+    : await requestFallback(endpoint, params);
   if (result?.success === false) throw new Error(result.error || "请求失败");
   return result || {};
 }
 
 async function apiPost(endpoint, body = {}) {
-  const result = await bridge.apiPost(endpoint, body);
+  if (!bridge) throw new Error("AstrBot 插件页桥接未注入");
+  const result = bridge.apiPost
+    ? await bridge.apiPost(endpoint, body)
+    : await requestFallback(endpoint, {}, body);
   if (result?.success === false) throw new Error(result.error || "请求失败");
   return result || {};
 }
@@ -327,7 +352,7 @@ function bindEvents() {
 async function init() {
   bindEvents();
   try {
-    await bridge.ready();
+    if (bridge?.ready) await bridge.ready();
     await Promise.all([loadOverview(), loadVideos()]);
     setTitle("概览", "最近观看、笔记与原文状态。");
   } catch (error) {
