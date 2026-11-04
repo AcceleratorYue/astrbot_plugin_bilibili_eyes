@@ -998,8 +998,58 @@ def test_transcript_direct_read() -> None:
     print("✅ 原文直读：缓存落盘 / 关键词 / 来源标注 / 子代理旁路")
 
 
+def test_config_grouping() -> None:
+    import main as plugin_main
+
+    class FakeConfig(dict):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.saved = 0
+
+        def save_config(self):
+            self.saved += 1
+
+    plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+    plugin._config = {
+        "enabled": False,
+        "vision": {"video_mode": "extreme"},
+        "extreme": {"extreme_max_frames": 24},
+    }
+    assert plugin._opt("enabled") is False
+    assert plugin._opt("video_mode") == "extreme"
+    assert plugin._opt("extreme_max_frames") == 24
+    assert plugin._opt("frame_count") == plugin_main.DEFAULT_OPTIONS["frame_count"]
+
+    flat = FakeConfig(
+        {
+            "enabled": False,
+            "video_mode": "extreme",
+            "extreme_max_frames": 24,
+        }
+    )
+    plugin._config = flat
+    plugin._migrate_grouped_config()
+    assert flat["basic"]["enabled"] is False
+    assert flat["vision"]["video_mode"] == "extreme"
+    assert flat["extreme"]["extreme_max_frames"] == 24
+    assert flat["runtime"]["_grouped_config_migrated"] is True
+    assert flat.saved == 1
+    assert plugin._opt("video_mode") == "extreme"
+    print("✅ 配置分组：分组优先 / 扁平回退 / 自动迁移")
+
+
 def test_schema() -> None:
-    schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
+    grouped = json.loads(
+        (PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8")
+    )
+    assert "basic" in grouped and "vision" in grouped and "extreme" in grouped
+    assert all(
+        isinstance(item, dict) and item.get("type") == "object"
+        for item in grouped.values()
+    )
+    schema = {}
+    for group in grouped.values():
+        schema.update(group.get("items") or {})
     required = {
         "enabled",
         "nl_trigger_enabled",
@@ -1058,7 +1108,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.10.0" in meta
+    assert "version: 0.10.1" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1114,6 +1164,7 @@ def main() -> int:
     test_extreme_planner()
     test_video_mode()
     test_transcript_direct_read()
+    test_config_grouping()
     test_schema()
     print("\n全部离线测试通过")
     return 0

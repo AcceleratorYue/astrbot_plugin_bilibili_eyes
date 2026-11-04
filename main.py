@@ -159,7 +159,145 @@ DEFAULT_OPTIONS: dict = {
     "wait_notice_stop_event": True,
     "max_frame_mb": 3,
     "frames_per_sheet": 6,
+    "_grouped_config_migrated": False,
 }
+
+CONFIG_GROUP_ORDER = (
+    "basic",
+    "bilibili",
+    "vision",
+    "enhanced",
+    "extreme",
+    "audio",
+    "content",
+    "prompts",
+    "runtime",
+    "waiting",
+)
+
+CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
+    "basic": (
+        "enabled",
+        "nl_trigger_enabled",
+        "command_enabled",
+        "group_whitelist",
+        "group_blacklist",
+        "cooldown_seconds",
+        "user_daily_quota",
+        "quota_exempt_admins",
+        "quota_exempt_users",
+        "ack_enabled",
+        "ack_template_video",
+        "ack_template_up",
+    ),
+    "bilibili": (
+        "sessdata",
+        "user_agent",
+        "request_timeout",
+        "request_interval",
+        "max_duration_minutes",
+        "up_search_limit",
+        "up_exact_match_only",
+        "archive_fallback_enabled",
+        "archive_fallback_api",
+    ),
+    "vision": (
+        "vision_provider_id",
+        "video_mode",
+        "enhanced_mode",
+        "frame_height",
+        "max_frame_mb",
+        "frame_count",
+        "frame_source",
+        "subagent_frame_mode",
+        "frames_per_sheet",
+        "digest_max_chars",
+        "digest_other_max_chars",
+    ),
+    "enhanced": (
+        "enhanced_frame_count",
+        "enhanced_sample_fps",
+        "enhanced_max_analysis_seconds",
+        "enhanced_cut_abs",
+        "enhanced_cut_spike",
+        "enhanced_cut_min_gap",
+        "enhanced_integral_seconds",
+        "enhanced_dup_min",
+        "enhanced_silent_floor_seconds",
+        "enhanced_sheet_width",
+        "enhanced_frames_per_sheet",
+        "enhanced_digest_max_chars",
+        "enhanced_other_max_chars",
+        "enhanced_subagent_timeout",
+        "enhanced_fallback_to_normal",
+    ),
+    "extreme": (
+        "extreme_max_frames",
+        "extreme_max_sheets",
+        "extreme_max_analysis_seconds",
+        "extreme_readability",
+        "extreme_note_budget",
+        "extreme_note_core_min",
+        "extreme_note_core_max",
+        "extreme_note_other_min",
+        "extreme_note_other_max",
+        "extreme_subagent_timeout",
+        "extreme_fallback_to_enhanced",
+    ),
+    "audio": (
+        "audio_transcription_enabled",
+        "audio_transcription_mode",
+        "audio_transcription_provider_id",
+        "audio_transcription_max_seconds",
+        "audio_transcription_chunk_seconds",
+        "audio_transcription_max_mb",
+        "audio_transcription_timeout",
+    ),
+    "content": (
+        "include_subtitle",
+        "subtitle_langs",
+        "include_description",
+        "include_comments",
+        "comment_limit",
+        "comment_reply_limit",
+        "include_pinned_comment",
+        "comment_filter_ads",
+        "injection_guard",
+    ),
+    "prompts": (
+        "subagent_system_prompt",
+        "subagent_output_instructions",
+        "main_model_prompt_template",
+    ),
+    "runtime": (
+        "subagent_timeout",
+        "subagent_retries",
+        "concurrency_limit",
+        "worker_threads",
+        "prepare_timeout_video",
+        "prepare_timeout_up",
+        "cache_enabled",
+        "cache_ttl_hours",
+        "cache_max_entries",
+        "transcript_ttl_hours",
+        "transcript_max_entries",
+        "_grouped_config_migrated",
+    ),
+    "waiting": (
+        "wait_notice_enabled",
+        "wait_notice_allow_commands",
+        "wait_notice_template",
+        "wait_notice_cooldown_seconds",
+        "wait_notice_stop_event",
+    ),
+}
+
+CONFIG_KEY_TO_GROUP: dict[str, str] = {
+    key: group
+    for group, keys in CONFIG_GROUP_KEYS.items()
+    for key in keys
+}
+
 
 
 @dataclass
@@ -200,9 +338,10 @@ class BilibiliEyesPlugin(Star):
         self._pending: dict[str, dict] = {}
         self._transcripts = None
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.10.0 已加载")
+        logger.info(f"{LOG} 插件 v0.10.1 已加载")
 
     async def initialize(self) -> None:
+        self._migrate_grouped_config()
         self._init_cache()
         if not self._bool_opt("nl_trigger_enabled"):
             for name in TOOL_NAMES:
@@ -234,12 +373,65 @@ class BilibiliEyesPlugin(Star):
         value = None
         try:
             if self._config is not None:
-                value = self._config.get(key, DEFAULT_OPTIONS.get(key, default))
+                group_key = CONFIG_KEY_TO_GROUP.get(key)
+                if group_key:
+                    group = self._config.get(group_key)
+                    if isinstance(group, dict) and key in group:
+                        value = group.get(key)
+                if value is None:
+                    value = self._config.get(
+                        key, DEFAULT_OPTIONS.get(key, default)
+                    )
         except Exception:
             value = None
         if value is None:
             return DEFAULT_OPTIONS.get(key, default)
         return value
+
+    def _migrate_grouped_config(self) -> None:
+        """把旧扁平配置搬进 object 分组，避免 WebUI 显示默认值。"""
+
+        if self._config is None:
+            return
+        try:
+            if self._bool_opt("_grouped_config_migrated"):
+                return
+            changed = False
+            for key, group_key in CONFIG_KEY_TO_GROUP.items():
+                if key == "_grouped_config_migrated":
+                    continue
+                try:
+                    flat = self._config.get(key)
+                except Exception:
+                    flat = None
+                if flat is None:
+                    continue
+                try:
+                    group = self._config.get(group_key)
+                except Exception:
+                    group = None
+                if not isinstance(group, dict):
+                    group = {}
+                    self._config[group_key] = group
+                group[key] = flat
+                changed = True
+            try:
+                runtime = self._config.get("runtime")
+            except Exception:
+                runtime = None
+            if not isinstance(runtime, dict):
+                runtime = {}
+                self._config["runtime"] = runtime
+            runtime["_grouped_config_migrated"] = True
+            if changed:
+                saver = getattr(self._config, "save_config", None)
+                if callable(saver):
+                    try:
+                        saver()
+                    except Exception as exc:
+                        logger.warning(f"{LOG} 分组配置保存失败：{exc}")
+        except Exception as exc:
+            logger.warning(f"{LOG} 分组配置迁移失败：{exc}")
 
     def _bool_opt(self, key: str) -> bool:
         value = self._opt(key)
