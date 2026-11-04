@@ -126,3 +126,11 @@ tr[data-bvid]:hover { background: #f8f1e8; }
   .top-actions { margin-top: 8px; }
   .kv { grid-template-columns: 1fr; }
 }
+
+.cleanup-confirm {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+  background: #f9ece8; border: 1px solid #eccfc5; color: #7a3b2c;
+}
+.cleanup-confirm[hidden] { display: none; }
+.cleanup-confirm span { flex: 1; min-width: 180px; }

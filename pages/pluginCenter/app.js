@@ -1,5 +1,7 @@
 const bridge = window.AstrBotPluginView || window.AstrBotPluginPage;
 
+let pendingCleanup = null;
+
 const state = {
   overview: {},
   videos: [],
@@ -87,8 +89,10 @@ async function apiPost(endpoint, body = {}) {
 }
 
 function showError(message) {
-  $("globalErrorText").textContent = message || "加载失败";
+  const text = String(message || "加载失败");
+  $("globalErrorText").textContent = text;
   $("globalError").hidden = false;
+  console.error("[B站之眼 WebUI]", text);
 }
 
 function hideError() {
@@ -252,6 +256,7 @@ async function loadCache() {
     $("cacheCards").innerHTML = cards.map(([label, item]) => `
       <div class="card"><div class="label">${esc(label)}</div><div class="value">${esc(item?.count || 0)}</div><div class="sub">${esc(((item?.bytes || 0) / 1024).toFixed(1))} KB</div></div>
     `).join("");
+    hideError();
   } catch (error) {
     showError(`缓存：${error.message}`);
   }
@@ -276,6 +281,7 @@ async function loadConfig() {
       }).join("");
       return `<div class="config-group"><h3>${esc(labelMap[group] || group)}</h3>${rows}</div>`;
     }).join("");
+    hideError();
   } catch (error) {
     showError(`配置：${error.message}`);
   }
@@ -290,17 +296,28 @@ async function loadDiagnostics() {
       <span class="k">笔记缓存</span><span>${esc(data.notes || 0)} 条</span>
       <span class="k">原文缓存</span><span>${esc(data.transcripts || 0)} 条</span>
       <span class="k">最近记录</span><span>${(data.recent || []).length} 条</span>`;
+    hideError();
   } catch (error) {
     showError(`诊断：${error.message}`);
   }
 }
 
+function armCleanup(kind) {
+  pendingCleanup = kind;
+  const labels = { notes: "笔记", transcripts: "原文", frames: "帧", all: "全部" };
+  $("cleanupConfirmText").textContent = `确认清理${labels[kind] || kind}缓存？此操作不可恢复。`;
+  $("cleanupConfirm").hidden = false;
+  $("cleanupResult").hidden = true;
+}
+
 async function cleanup(kind) {
-  if (!window.confirm(`确认清理“${kind}”缓存？此操作不可恢复。`)) return;
   try {
     const data = await apiPost("cache-cleanup", { kind });
     $("cleanupResult").hidden = false;
     $("cleanupResult").textContent = `已清理：${JSON.stringify(data.removed || {})}`;
+    $("cleanupConfirm").hidden = true;
+    pendingCleanup = null;
+    hideError();
     await loadCache();
     await loadOverview();
   } catch (error) {
@@ -351,7 +368,9 @@ function bindEvents() {
       $("detailRawResult").textContent = `查询失败：${error.message}`;
     }
   });
-  document.querySelectorAll("[data-clean]").forEach((button) => button.addEventListener("click", () => cleanup(button.dataset.clean)));
+  document.querySelectorAll("[data-clean]").forEach((button) => button.addEventListener("click", () => armCleanup(button.dataset.clean)));
+  $("cleanupConfirmYes").addEventListener("click", () => { if (pendingCleanup) cleanup(pendingCleanup); });
+  $("cleanupCancel").addEventListener("click", () => { pendingCleanup = null; $("cleanupConfirm").hidden = true; });
 }
 
 async function init() {

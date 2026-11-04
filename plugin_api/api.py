@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -330,10 +331,12 @@ class PluginWebApi:
 
     async def config(self):
         try:
+            group_keys = getattr(self.plugin, "CONFIG_GROUP_KEYS", None)
+            if not group_keys:
+                module = sys.modules.get(type(self.plugin).__module__)
+                group_keys = getattr(module, "CONFIG_GROUP_KEYS", {}) if module else {}
             groups = {}
-            for group, keys in getattr(
-                self.plugin, "CONFIG_GROUP_KEYS", {}
-            ).items():
+            for group, keys in (group_keys or {}).items():
                 values = {}
                 for key in keys:
                     if key == "_grouped_config_migrated":
