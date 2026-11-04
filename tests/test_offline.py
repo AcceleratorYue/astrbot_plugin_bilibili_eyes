@@ -1083,6 +1083,38 @@ def test_config_grouping() -> None:
     print("✅ 配置分组：分组优先 / 扁平回退 / 自动迁移")
 
 
+def test_web_api_registration_and_cache_listing() -> None:
+    from plugin_api import PluginWebApi
+
+    class FakeContext:
+        def __init__(self):
+            self.registered_web_apis = []
+
+        def register_web_api(self, route, handler, methods, description):
+            self.registered_web_apis.append((route, handler, tuple(methods)))
+
+    plugin = SimpleNamespace(context=FakeContext())
+    service = PluginWebApi(plugin)
+    service.register()
+    routes = [item[0] for item in plugin.context.registered_web_apis]
+    assert "/astrbot_plugin_bilibili_eyes/overview" in routes
+    assert "/astrbot_plugin_bilibili_eyes/transcript" in routes
+    service.unregister()
+    assert not plugin.context.registered_web_apis
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache = eyes_cache.NoteCache(Path(tmp), ttl_hours=1, max_entries=10)
+        cache.set(
+            "BV1web", 1, "<video_core_notes>核心</video_core_notes>",
+            {"title": "WebUI 测试", "mode": "extreme", "frames": 7}, "",
+        )
+        records = cache.list_records()
+        assert records and records[0]["bvid"] == "BV1web"
+        record = cache.get_record("BV1web", 1)
+        assert record and record["digest"] and record["meta"]["mode"] == "extreme"
+    print("✅ WebUI：API 注册 / 笔记列表 / 详情读取")
+
+
 def test_schema() -> None:
     grouped = json.loads(
         (PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8")
@@ -1155,7 +1187,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.11.0" in meta
+    assert "version: 0.12.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1213,6 +1245,7 @@ def main() -> int:
     test_video_mode()
     test_transcript_direct_read()
     test_config_grouping()
+    test_web_api_registration_and_cache_listing()
     test_schema()
     print("\n全部离线测试通过")
     return 0

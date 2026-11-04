@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f6f4ef" />
+    <title>B站之眼 · 观看与笔记管理</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">眼</span>
+          <div>
+            <strong>B站之眼</strong>
+            <small>观看与笔记管理</small>
+          </div>
+        </div>
+        <nav class="nav" aria-label="功能模块">
+          <button class="nav-item active" data-view="overview" type="button">概览</button>
+          <button class="nav-item" data-view="videos" type="button">视频记录</button>
+          <button class="nav-item" data-view="transcript" type="button">原文检索</button>
+          <button class="nav-item" data-view="cache" type="button">缓存管理</button>
+          <button class="nav-item" data-view="diagnostics" type="button">诊断</button>
+          <button class="nav-item" data-view="settings" type="button">配置摘要</button>
+        </nav>
+        <div class="sidebar-foot">
+          <span id="versionLabel">v0.11.0</span>
+          <button id="refreshBtn" class="link-btn" type="button">刷新</button>
+        </div>
+      </aside>
+
+      <main class="main" id="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">BILIBILI EYES / CONSOLE</p>
+            <h1 id="pageTitle">概览</h1>
+            <p id="pageSubtitle" class="subtitle">最近观看、笔记与原文状态。</p>
+          </div>
+          <div class="top-actions">
+            <span id="modeBadge" class="badge">模式：--</span>
+          </div>
+        </header>
+
+        <div id="globalError" class="callout error" role="alert" hidden>
+          <span id="globalErrorText">加载失败</span>
+          <button id="retryBtn" type="button">重试</button>
+        </div>
+
+        <section id="view-overview" class="view active">
+          <div id="overviewCards" class="cards"></div>
+          <div class="panel">
+            <div class="panel-head">
+              <div><p class="eyebrow">RECENT</p><h2>最近一次观看</h2></div>
+            </div>
+            <div id="recentVideo" class="empty">暂无观看记录</div>
+          </div>
+        </section>
+
+        <section id="view-videos" class="view">
+          <div class="toolbar">
+            <label class="search">
+              <span>搜索</span>
+              <input id="videoSearch" type="search" placeholder="标题或 BV…" autocomplete="off" />
+            </label>
+            <label class="select">
+              <span>模式</span>
+              <select id="videoMode">
+                <option value="">全部</option>
+                <option value="normal">普通</option>
+                <option value="enhanced">增强</option>
+                <option value="extreme">极致</option>
+              </select>
+            </label>
+            <span id="videoCount" class="count">0 条</span>
+          </div>
+          <div class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>时间</th><th>标题</th><th>BV / 分P</th><th>模式</th>
+                    <th>帧数</th><th>笔记</th><th>文本</th>
+                  </tr>
+                </thead>
+                <tbody id="videoRows"></tbody>
+              </table>
+            </div>
+            <div id="videoEmpty" class="empty" hidden>暂无记录</div>
+          </div>
+        </section>
+
+        <section id="view-transcript" class="view">
+          <div class="toolbar wrap">
+            <label class="select">
+              <span>视频</span>
+              <select id="transcriptVideo"></select>
+            </label>
+            <label class="search">
+              <span>关键词</span>
+              <input id="transcriptQuery" type="search" placeholder="原话片段 / 关键词…" autocomplete="off" />
+            </label>
+            <label class="select">
+              <span>来源</span>
+              <select id="transcriptSource">
+                <option value="both">官方 + ASR</option>
+                <option value="official">官方字幕</option>
+                <option value="asr">ASR</option>
+              </select>
+            </label>
+            <label class="time"><span>起</span><input id="transcriptStart" type="number" min="0" step="1" placeholder="秒" /></label>
+            <label class="time"><span>止</span><input id="transcriptEnd" type="number" min="0" step="1" placeholder="秒" /></label>
+            <button id="transcriptSearchBtn" type="button">查询</button>
+          </div>
+          <pre id="transcriptResult" class="pre output">选择视频并输入关键词，或直接指定时间范围。</pre>
+        </section>
+
+        <section id="view-cache" class="view">
+          <div class="cards" id="cacheCards"></div>
+          <div class="panel">
+            <div class="panel-head">
+              <div><p class="eyebrow">CLEANUP</p><h2>缓存清理</h2></div>
+              <span class="muted">清理后不可恢复，请确认后再操作。</span>
+            </div>
+            <div class="actions">
+              <button data-clean="notes" type="button">清理笔记</button>
+              <button data-clean="transcripts" type="button">清理原文</button>
+              <button data-clean="frames" type="button">清理帧</button>
+              <button data-clean="all" class="danger" type="button">清理全部</button>
+            </div>
+            <pre id="cleanupResult" class="pre output" hidden></pre>
+          </div>
+        </section>
+
+        <section id="view-diagnostics" class="view">
+          <div class="panel">
+            <div class="panel-head"><div><p class="eyebrow">DIAGNOSTICS</p><h2>运行诊断</h2></div></div>
+            <div id="diagnosticsContent" class="kv"></div>
+          </div>
+        </section>
+
+        <section id="view-settings" class="view">
+          <div class="panel">
+            <div class="panel-head">
+              <div><p class="eyebrow">READ ONLY</p><h2>配置摘要</h2></div>
+              <span class="muted">完整配置请到 AstrBot 插件配置页修改。</span>
+            </div>
+            <div id="configGroups" class="config-groups"></div>
+          </div>
+        </section>
+
+        <section id="view-detail" class="view">
+          <button id="backToVideos" class="link-btn" type="button">← 返回视频记录</button>
+          <div class="panel detail-head">
+            <p class="eyebrow">VIDEO DETAIL</p>
+            <h2 id="detailTitle">视频详情</h2>
+            <p id="detailMeta" class="muted"></p>
+          </div>
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="core" type="button">核心笔记</button>
+            <button class="tab" data-tab="other" type="button">其他客观内容</button>
+            <button class="tab" data-tab="plan" type="button">帧预算</button>
+            <button class="tab" data-tab="raw" type="button">原文</button>
+          </div>
+          <pre id="detailCore" class="pre output">暂无核心笔记</pre>
+          <pre id="detailOther" class="pre output" hidden>暂无其他内容</pre>
+          <pre id="detailPlan" class="pre output" hidden>暂无帧预算</pre>
+          <div id="detailRaw" class="raw-panel" hidden>
+            <div class="toolbar wrap">
+              <label class="search"><span>关键词</span><input id="detailRawQuery" type="search" placeholder="关键词…" /></label>
+              <label class="select"><span>来源</span>
+                <select id="detailRawSource"><option value="both">官方 + ASR</option><option value="official">官方</option><option value="asr">ASR</option></select>
+              </label>
+              <button id="detailRawSearch" type="button">查询原文</button>
+            </div>
+            <pre id="detailRawResult" class="pre output">输入关键词查询原文。</pre>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>

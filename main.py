@@ -23,7 +23,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 # AstrBot 热重载通常只重新 import main，子模块会留在 sys.modules 里，
 # 导致代码更新后仍跑到旧的 eyes_client/eyes_subagent。这里先清掉再导入。
-for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean", "eyes_enhanced", "eyes_extreme", "eyes_transcript"):
+for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean", "eyes_enhanced", "eyes_extreme", "eyes_transcript", "plugin_api", "plugin_api.api"):
     sys.modules.pop(_module_name, None)
 
 from astrbot.api import logger
@@ -41,6 +41,7 @@ import eyes_subagent as sa
 import eyes_transcript as et
 from eyes_cache import MaterialStore, NoteCache
 from eyes_card import extract_bilibili_card_url
+from plugin_api import PluginWebApi
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_eyes"
 LOG = "[B站之眼]"
@@ -355,12 +356,14 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._transcripts = None
+        self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.11.0 已加载")
+        logger.info(f"{LOG} 插件 v0.12.0 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
         self._init_cache()
+        self.plugin_web_api.register()
         if not self._bool_opt("nl_trigger_enabled"):
             for name in TOOL_NAMES:
                 try:
@@ -373,6 +376,7 @@ class BilibiliEyesPlugin(Star):
             self._executor.shutdown(wait=False, cancel_futures=True)
         except Exception:
             pass
+        self.plugin_web_api.unregister()
         self._video_locks.clear()
         self._video_results.clear()
         logger.info(f"{LOG} 插件已卸载")
@@ -1794,7 +1798,16 @@ class BilibiliEyesPlugin(Star):
                     material.video.bvid,
                     material.video.page,
                     digest,
-                    {"title": material.video.title},
+                    {
+                        "title": material.video.title,
+                        "mode": self._video_mode(),
+                        "official_status": material.official_status,
+                        "asr_status": material.asr_status,
+                        "frame_plan": material.frame_plan,
+                        "frames": len(material.frame_layout),
+                        "core_chars": len(sa.split_note_sections(digest)[0]),
+                        "other_chars": len(sa.split_note_sections(digest)[1]),
+                    },
                     self._cache_variant(),
                 )
             return digest

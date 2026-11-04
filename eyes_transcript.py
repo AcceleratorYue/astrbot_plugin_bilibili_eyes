@@ -111,6 +111,34 @@ class TranscriptStore:
         payload["asr"] = _normalize_lines(payload.get("asr") or [])
         return payload
 
+
+    def list_records(self, limit: int = 200) -> list[dict]:
+        self.prune()
+        records: list[dict] = []
+        for path in self.directory.glob("*.json"):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            updated = float(payload.get("updated") or payload.get("created") or 0)
+            if not updated or time.time() - updated > self.ttl_seconds:
+                continue
+            records.append(
+                {
+                    "bvid": str(payload.get("bvid") or ""),
+                    "page": int(payload.get("page") or 1),
+                    "title": str(payload.get("title") or ""),
+                    "created": updated,
+                    "official_count": len(payload.get("official") or []),
+                    "asr_count": len(payload.get("asr") or []),
+                    "official_status": str(payload.get("official_status") or ""),
+                    "asr_status": str(payload.get("asr_status") or ""),
+                    "filename": path.name,
+                }
+            )
+        records.sort(key=lambda item: item.get("created", 0), reverse=True)
+        return records[: max(1, int(limit))]
+
     def prune(self) -> None:
         files = sorted(
             self.directory.glob("*.json"),

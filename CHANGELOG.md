@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.0 (2026-11-04)
+
+实现 WebUI 管理页。
+
+- 新增 `pages/pluginCenter`：概览、视频记录、视频详情、原文检索、缓存管理、诊断、配置摘要；
+- 新增 `plugin_api`：`/overview`、`/videos`、`/video`、`/transcript`、`/cache-summary`、`/cache-cleanup`、`/config`、`/diagnostics`；
+- 视频详情支持核心笔记 / 其他客观内容 / 帧预算 / 原文四个标签；
+- 原文检索直接复用 `TranscriptStore.search`，不经过子代理；
+- 缓存支持按类型清理，清理前二次确认；
+- 配置只读展示，SESSDATA 脱敏；完整修改仍走 AstrBot 配置页；
+- 页面无独立服务/端口，通过 AstrBot 插件页桥接；
+- 笔记缓存 meta 增加模式、状态、帧预算、字数等信息；
+- 新增 WebAPI 注册/笔记列表测试。
+
 ## 0.11.0 (2026-11-04)
 
 补齐极致模式四项遗留能力。

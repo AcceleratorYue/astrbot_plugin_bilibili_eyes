@@ -73,6 +73,53 @@ class NoteCache:
             return
         self._prune()
 
+
+    def list_records(self, limit: int = 200) -> list[dict]:
+        """列出有效笔记记录，供 WebUI 使用；不返回大段 digest。"""
+
+        self._prune()
+        records: list[dict] = []
+        for path in self.directory.glob("*.json"):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            created = float(payload.get("created") or 0)
+            if not created or time.time() - created > self.ttl_seconds:
+                continue
+            records.append(
+                {
+                    "bvid": str(payload.get("bvid") or ""),
+                    "page": int(payload.get("page") or 1),
+                    "created": created,
+                    "meta": payload.get("meta") or {},
+                    "filename": path.name,
+                }
+            )
+        records.sort(key=lambda item: item.get("created", 0), reverse=True)
+        return records[: max(1, int(limit))]
+
+    def get_record(self, bvid: str, page: int = 1) -> dict | None:
+        self._prune()
+        prefix = f"{bvid}_p{int(page)}"
+        for path in self.directory.glob(prefix + "*.json"):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            created = float(payload.get("created") or 0)
+            if not created or time.time() - created > self.ttl_seconds:
+                continue
+            return {
+                "bvid": str(payload.get("bvid") or bvid),
+                "page": int(payload.get("page") or page),
+                "created": created,
+                "meta": payload.get("meta") or {},
+                "digest": str(payload.get("digest") or ""),
+                "filename": path.name,
+            }
+        return None
+
     def _prune(self) -> None:
         files = sorted(
             self.directory.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True

@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.11.0>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.12.0>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,7 +12,7 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.11.0
+## 当前版本 v0.12.0
 
 - 三种读取模式：普通、增强、**极致模式**；
   - 普通/增强的固定帧数与固定笔记预算保持不变；
@@ -26,7 +26,7 @@
 - 原文缓存独立落盘，内存材料过期/重启后仍可回查；
 - 极致模式补齐像素预算布局、场景权重、候选帧质量、超预算二次压缩；
 - 配置页按 10 个板块分组，旧扁平配置自动迁移；
-- 新增 WebUI 设计稿（记录/笔记/原文/缓存/诊断），暂未实现；
+- 新增 WebUI 管理页：概览/视频/笔记/原文/缓存/诊断/配置摘要；
 - 支持回看、追问、单帧截图、UP 主页、简介/字幕/评论/弹幕清洗、笔记缓存。
 
 [完整版本记录](CHANGELOG.md) · [极致模式设计](docs/动态截帧方案设计_20261104.md) · [原文直读设计](docs/二次查询直接取原文方案_20261104.md) · [WebUI 设计](docs/WebUI设计方案_20261104.md) · [安全策略](SECURITY.md) · [许可证](LICENSE)
@@ -208,6 +208,24 @@ bilibili_transcript(
 - 缓存缺失时提示重新观看，不自动重抓/重新 ASR。
 
 `bilibili_ask` 仍用于自然语言总结；问“原话/第几分钟说了什么”时用 `bilibili_transcript`。
+
+## WebUI
+
+在 AstrBot 插件管理页打开「B站之眼 · 观看与笔记管理」。
+
+页面包含：
+
+- **概览**：模式、最近观看、笔记/原文/帧缓存；
+- **视频记录**：标题、BV、模式、帧数、笔记字数、文本状态；
+- **视频详情**：核心笔记 / 其他客观内容 / 帧预算 / 原文；
+- **原文检索**：官方字幕与 ASR 分栏，关键词/时间范围；
+- **缓存管理**：笔记、原文、帧缓存按类型清理；
+- **诊断**：模式、缓存、最近记录；
+- **配置摘要**：只读展示 10 个配置分组，SESSDATA 脱敏。
+
+WebUI 通过 AstrBot 插件页面桥接，不启动独立服务、不占端口。完整配置修改仍到 AstrBot 配置页。
+
+设计稿：[docs/WebUI设计方案_20261104.md](docs/WebUI设计方案_20261104.md)。
 
 ## SESSDATA 怎么获取
 
