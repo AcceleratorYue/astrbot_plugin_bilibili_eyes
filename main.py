@@ -2094,7 +2094,7 @@ class BilibiliEyesPlugin(Star):
             material.warnings.append(f"极致模式有 {missing_candidates} 组候选帧未取到")
         if not pairs:
             return False
-        per_sheet = max(2, min(12, int(plan.cells_per_sheet or 6)))
+        per_sheet = max(2, min(24, int(plan.cells_per_sheet or 6)))
         max_sheets = max(1, min(12, int(plan.max_sheets or 8)))
         pairs = pairs[: per_sheet * max_sheets]
         all_times = [round(float(seconds), 2) for _path, seconds in pairs]
