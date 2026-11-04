@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.10.1>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.11.0>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,7 +12,7 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.10.1
+## 当前版本 v0.11.0
 
 - 三种读取模式：普通、增强、**极致模式**；
   - 普通/增强的固定帧数与固定笔记预算保持不变；
@@ -24,6 +24,7 @@
   - 极致：核心 1500~9000 + 其他 800~3500，按视频体量动态计算；
 - 新增 `bilibili_transcript`：主模型可直接查询官方字幕/ASR 原文，不再经过子代理；
 - 原文缓存独立落盘，内存材料过期/重启后仍可回查；
+- 极致模式补齐像素预算布局、场景权重、候选帧质量、超预算二次压缩；
 - 配置页按 10 个板块分组，旧扁平配置自动迁移；
 - 新增 WebUI 设计稿（记录/笔记/原文/缓存/诊断），暂未实现；
 - 支持回看、追问、单帧截图、UP 主页、简介/字幕/评论/弹幕清洗、笔记缓存。
@@ -106,6 +107,7 @@
 | `extreme_max_frames` | 48 | 极致模式动态帧数上限 |
 | `extreme_max_sheets` | 8 | 极致模式最大拼图张数 |
 | `extreme_max_analysis_seconds` | 3600 | 极致模式最多分析秒数 |
+| `extreme_pixel_budget` | 1200000 | 每张拼图像素预算，影响画布尺寸和每张格数 |
 | `extreme_readability` | scene | shot/scene/text；决定每张可放几帧 |
 | `extreme_note_core_min/max` | 1500/9000 | 极致核心笔记动态范围 |
 | `extreme_note_other_min/max` | 800/3500 | 极致其他内容动态范围 |
@@ -168,15 +170,19 @@
 2. 计算文本画像（覆盖度、密度、多样性、质量）；
 3. 低分辨率扫描，计算切镜/画面变化画像；
 4. 按时长基础曲线 + 文本/画面修正得到动态帧数；
-5. 按可读性目标拆成多张拼图；
-6. 每格记录 `from/to/frame_at/readability/dark`；
-7. 按视频体量计算核心/其他笔记预算，写入子代理提示词。
+5. 按切点划分场景，每场景至少 1 帧，按画面变化/文本缺口加权分配；
+6. 在每个场景时间点生成候选帧，避开切点，按非近黑 + 清晰度选择；
+7. 按可读性目标和像素预算自动规划画布/每张格数，拆成多张拼图；
+8. 每格记录 `from/to/frame_at/readability/dark`；
+9. 按视频体量计算核心/其他笔记预算，写入子代理提示词；
+10. 超预算时二次调用子代理做结构化压缩，不重新读视频。
 
 极致模式上限：
 
 - 最大帧数 48；
 - 最大拼图张数 8；
 - 可读性 `shot/scene/text`，分别影响每张格数；
+- 每张像素预算 `extreme_pixel_budget`，默认 120 万；
 - 超过可读性/图片上限时减少帧数并写入证据缺口。
 
 ## 回读原文

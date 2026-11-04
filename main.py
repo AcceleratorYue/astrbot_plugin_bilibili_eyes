@@ -94,6 +94,7 @@ DEFAULT_OPTIONS: dict = {
     "enhanced_frames_per_sheet": 6,
     "extreme_max_frames": 48,
     "extreme_max_sheets": 8,
+    "extreme_pixel_budget": 1200000,
     "extreme_max_analysis_seconds": 3600,
     "extreme_readability": "scene",
     "extreme_note_budget": "dynamic",
@@ -317,6 +318,23 @@ def _fmt_elapsed(seconds: float) -> str:
     return f"{minutes} 分 {sec} 秒"
 
 
+def _frame_quality(path: Path) -> float:
+    """非近黑优先，其次 Laplacian/边缘方差越高越清晰。"""
+
+    try:
+        from PIL import Image, ImageFilter, ImageStat
+
+        with Image.open(path).convert("L") as image:
+            stat = ImageStat.Stat(image)
+            mean = float(stat.mean[0])
+            if mean < 8:
+                return -1.0
+            edges = image.filter(ImageFilter.FIND_EDGES)
+            return float(ImageStat.Stat(edges).var[0])
+    except Exception:
+        return -1.0
+
+
 class BilibiliEyesPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -338,7 +356,7 @@ class BilibiliEyesPlugin(Star):
         self._pending: dict[str, dict] = {}
         self._transcripts = None
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.10.1 已加载")
+        logger.info(f"{LOG} 插件 v0.11.0 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -1747,7 +1765,29 @@ class BilibiliEyesPlugin(Star):
                     if extreme
                     else ""
                 ),
+                truncate=not extreme,
             )
+            if extreme:
+                raw_core, raw_other = sa.split_note_sections(digest)
+                if (
+                    len(raw_core) > core_max
+                    or len(raw_other) > other_max
+                ):
+                    material.warnings.append(
+                        f"极致笔记超预算，执行结构化压缩："
+                        f"核心 {len(raw_core)}→{core_max}，"
+                        f"其他 {len(raw_other)}→{other_max}"
+                    )
+                    digest = await sa.compress_digest(
+                        self.context,
+                        provider_id,
+                        raw_core,
+                        raw_other,
+                        core_max,
+                        other_max,
+                        timeout=max(30, self._int_opt("extreme_subagent_timeout", 300)),
+                        retries=self._int_opt("subagent_retries", 1),
+                    )
             if self._cache is not None:
                 self._cache.set(
                     material.video.bvid,
@@ -1979,6 +2019,8 @@ class BilibiliEyesPlugin(Star):
             max_frames=self._int_opt("extreme_max_frames", 48),
             max_sheets=self._int_opt("extreme_max_sheets", 8),
             readability=str(self._opt("extreme_readability") or "scene"),
+            pixel_budget=self._int_opt("extreme_pixel_budget", 1200000),
+            base_sheet_width=scan_cfg.sheet_width,
         )
         if plan.target_frames <= 0:
             return False
@@ -1998,19 +2040,58 @@ class BilibiliEyesPlugin(Star):
             sheet_height=scan_cfg.sheet_height,
             gutter=scan_cfg.gutter,
         )
-        keyframes = ee.select_keyframes(samples, duration, target_cfg)
+        scene_rows = ex.plan_scene_times(
+            material, pre_keyframes, target, duration
+        )
+        keyframes = [
+            ee.Keyframe(
+                time=float(row["time"]),
+                score=float(row.get("score", 0) or 0),
+                via=str(row.get("via", "mark") or "mark"),
+            )
+            for row in scene_rows
+        ]
+        if not keyframes:
+            keyframes = ee.select_keyframes(samples, duration, target_cfg)
         if not keyframes:
             return False
+        material.warnings.append(
+            f"极致场景分配：{len(keyframes)} 个时间点，按画面/文本缺口加权"
+        )
         out_dir = self._data_dir() / "frames" / material.video.bvid / "extreme"
-        timestamps = [round(float(item.time), 1) for item in keyframes]
-        pairs = await self._run(
+        groups = ex.candidate_groups(keyframes, duration)
+        candidate_times = sorted(
+            {round(float(stamp), 2) for group in groups for stamp in group["times"]}
+        )
+        candidate_pairs = await self._run(
             client.extract_frames,
             info.video_url,
-            timestamps,
+            candidate_times,
             out_dir,
             self._int_opt("frame_height", 480),
             float(self._int_opt("max_frame_mb", 3)),
         )
+        if not candidate_pairs:
+            return False
+        by_time = {round(float(seconds), 2): path for path, seconds in candidate_pairs}
+        pairs = []
+        missing_candidates = 0
+        for group in groups:
+            options = [
+                (stamp, by_time[round(stamp, 2)])
+                for stamp in group["times"]
+                if round(stamp, 2) in by_time
+            ]
+            if not options:
+                missing_candidates += 1
+                continue
+            best_stamp, best_path = max(
+                options,
+                key=lambda item: _frame_quality(item[1]),
+            )
+            pairs.append((best_path, best_stamp))
+        if missing_candidates:
+            material.warnings.append(f"极致模式有 {missing_candidates} 组候选帧未取到")
         if not pairs:
             return False
         per_sheet = max(2, min(12, int(plan.cells_per_sheet or 6)))
@@ -2019,17 +2100,17 @@ class BilibiliEyesPlugin(Star):
         all_times = [round(float(seconds), 2) for _path, seconds in pairs]
         sheet_paths: list[Path] = []
         flat_layout: list[dict] = []
-        for sheet_index in range(0, len(pairs), per_sheet):
-            chunk = pairs[sheet_index : sheet_index + per_sheet]
-            if not chunk:
-                continue
+        pending = list(pairs)
+        processed = 0
+        while pending and len(sheet_paths) < max_sheets:
+            chunk = pending[:per_sheet]
             tiers = ee.assign_tiers([seconds for _path, seconds in chunk])
             segments = ee.split_one_bin(tiers, bin_cost=1000)
             if not segments:
-                continue
-            if len(segments) > 1:
-                chunk = chunk[: len(segments[0])]
-                tiers = tiers[: len(segments[0])]
+                break
+            take = len(chunk) if len(segments) == 1 else len(segments[0])
+            chunk = chunk[:take]
+            tiers = tiers[:take]
             sheet_frames = [
                 ee.SheetFrame(time=float(seconds), path=path, tier=int(tier))
                 for (path, seconds), tier in zip(chunk, tiers)
@@ -2042,12 +2123,12 @@ class BilibiliEyesPlugin(Star):
                 sheet_frames,
                 cells,
                 sheet_path,
-                scan_cfg.sheet_width,
-                scan_cfg.sheet_height,
+                int(plan.sheet_width),
+                int(plan.sheet_height),
                 scan_cfg.gutter,
             )
             if not layout.cells:
-                continue
+                break
             for cell in layout.cells:
                 item = dict(cell)
                 stamp = float(item.get("time", 0))
@@ -2055,7 +2136,7 @@ class BilibiliEyesPlugin(Star):
                     range(len(chunk)),
                     key=lambda pos: abs(float(chunk[pos][1]) - stamp),
                 )
-                global_index = sheet_index + local_index
+                global_index = processed + local_index
                 previous = all_times[global_index - 1] if global_index > 0 else 0.0
                 following = (
                     all_times[global_index + 1]
@@ -2072,7 +2153,7 @@ class BilibiliEyesPlugin(Star):
                 try:
                     from PIL import Image
 
-                    image_path = chunk[index][0]
+                    image_path = chunk[local_index][0]
                     with Image.open(image_path).convert("L") as image:
                         item["dark"] = bool(
                             sum(image.resize((32, 32)).getdata()) / 1024 < 8
@@ -2081,6 +2162,12 @@ class BilibiliEyesPlugin(Star):
                     item["dark"] = False
                 flat_layout.append(item)
             sheet_paths.append(layout.sheet)
+            pending = pending[take:]
+            processed += take
+        if pending:
+            material.warnings.append(
+                f"极致模式有 {len(pending)} 帧因拼图张数上限未放入"
+            )
         if not sheet_paths:
             return False
         material.frames = sheet_paths

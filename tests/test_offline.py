@@ -916,7 +916,52 @@ def test_extreme_planner() -> None:
     assert 800 <= budget.other_chars <= 3500
     assert budget.total_chars == budget.core_chars + budget.other_chars
     assert ex.readability_capacity("text") < ex.readability_capacity("scene")
-    print("✅ 极致模式：动态帧预算 / 文本画像 / 笔记预算")
+    layout = ex.plan_sheet_layout("scene", 1200000)
+    assert layout["capacity"] >= 6
+    assert layout["width"] <= 1280 and layout["width"] * layout["height"] <= 1200000
+    low_layout = ex.plan_sheet_layout("scene", 200000)
+    assert low_layout["capacity"] < layout["capacity"]
+    scene_rows = ex.plan_scene_times(text_material, text_keys, 12, 76)
+    assert 1 <= len(scene_rows) <= 12
+    assert all(row["from"] <= row["time"] <= row["to"] for row in scene_rows)
+    groups = ex.candidate_groups(text_keys, 76)
+    assert groups and all(group["times"] for group in groups)
+    print("✅ 极致模式：动态帧预算 / 文本画像 / 笔记预算 / 像素布局 / 场景分配")
+
+
+def test_compression_and_candidate_times() -> None:
+    class FakeContext:
+        def __init__(self):
+            self.calls = []
+
+        async def llm_generate(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                completion_text=(
+                    "<video_core_notes>压缩后的核心故事</video_core_notes>"
+                    "<video_other_notes>压缩后的评论区原文</video_other_notes>"
+                )
+            )
+
+    context = FakeContext()
+    result = asyncio.run(
+        sa.compress_digest(
+            context,
+            "provider",
+            "核心" * 100,
+            "评论" * 100,
+            20,
+            10,
+        )
+    )
+    assert "压缩后的核心故事" in result
+    assert "压缩后的评论区原文" in result
+    assert context.calls and context.calls[0]["image_urls"] == []
+    groups = ex.candidate_groups(
+        [SimpleNamespace(time=10.0, via="cut", score=1)], 30
+    )
+    assert groups[0]["times"] and groups[0]["times"][0] > 10.0
+    print("✅ 极致超预算：二次压缩 / 候选帧避开切点")
 
 
 def test_video_mode() -> None:
@@ -1080,6 +1125,7 @@ def test_schema() -> None:
         "enhanced_frames_per_sheet",
         "extreme_max_frames",
         "extreme_max_sheets",
+        "extreme_pixel_budget",
         "extreme_max_analysis_seconds",
         "extreme_readability",
         "extreme_note_core_max",
@@ -1103,12 +1149,13 @@ def test_schema() -> None:
     assert schema["video_mode"]["default"] == "auto"
     assert schema["extreme_max_frames"]["default"] == 48
     assert schema["extreme_max_sheets"]["default"] == 8
+    assert schema["extreme_pixel_budget"]["default"] == 1200000
     assert schema["extreme_max_analysis_seconds"]["default"] == 3600
     assert schema["extreme_readability"]["default"] == "scene"
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.10.1" in meta
+    assert "version: 0.11.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1162,6 +1209,7 @@ def main() -> int:
     test_enhanced_pipeline()
     test_extreme_pipeline()
     test_extreme_planner()
+    test_compression_and_candidate_times()
     test_video_mode()
     test_transcript_direct_read()
     test_config_grouping()

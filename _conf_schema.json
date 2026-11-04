@@ -346,6 +346,12 @@
         "hint": "默认8；长视频可增加，但会增加模型输入",
         "default": 8
       },
+      "extreme_pixel_budget": {
+        "description": "极致模式每张像素预算",
+        "type": "int",
+        "hint": "控制单张拼图像素总量，默认1200000；与可读性共同决定每张格数",
+        "default": 1200000
+      },
       "extreme_max_analysis_seconds": {
         "description": "极致模式最多分析秒数",
         "type": "int",

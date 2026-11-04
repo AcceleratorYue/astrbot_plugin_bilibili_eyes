@@ -145,6 +145,9 @@ class FramePlan:
     cap: int = 0
     cells_per_sheet: int = 6
     max_sheets: int = 8
+    sheet_width: int = 1280
+    sheet_height: int = 720
+    pixel_budget: int = 1200000
     readability: str = "scene"
     text: TextProfile = field(default_factory=TextProfile)
     visual: VisualProfile = field(default_factory=VisualProfile)
@@ -162,6 +165,9 @@ class FramePlan:
             "cap": self.cap,
             "cells_per_sheet": self.cells_per_sheet,
             "max_sheets": self.max_sheets,
+            "sheet_width": self.sheet_width,
+            "sheet_height": self.sheet_height,
+            "pixel_budget": self.pixel_budget,
             "readability": self.readability,
             "text": self.text.to_dict(),
             "visual": self.visual.to_dict(),
@@ -244,6 +250,29 @@ def readability_label(width: float, height: float) -> str:
     return "composition"
 
 
+def candidate_groups(keyframes: Sequence[Any], duration: float) -> list[dict]:
+    """为每个关键帧生成 2~3 个候选时间，避开切点。"""
+
+    duration = max(0.0, float(duration or 0))
+    groups: list[dict] = []
+    for item in keyframes:
+        base = float(getattr(item, "time", 0) or 0)
+        via = str(getattr(item, "via", "") or "")
+        if via == "cut":
+            offsets = (0.25, 0.55, 0.9)
+        else:
+            offsets = (-0.18, 0.0, 0.18)
+        times = []
+        for offset in offsets:
+            stamp = base + offset
+            if 0 <= stamp <= max(0.0, duration - 0.05):
+                times.append(round(stamp, 2))
+        if not times:
+            times = [round(min(max(0.0, base), max(0.0, duration - 0.05)), 2)]
+        groups.append({"target": round(base, 2), "times": sorted(set(times))})
+    return groups
+
+
 def estimate_visual_profile(keyframes: Sequence[Any], duration: float) -> VisualProfile:
     if not keyframes:
         return VisualProfile()
@@ -261,9 +290,175 @@ def estimate_visual_profile(keyframes: Sequence[Any], duration: float) -> Visual
     )
 
 
+NEED_SIZE = {"shot": (160, 90), "scene": (320, 180), "text": (480, 270)}
+GUTTER = 4
+
+
+def plan_sheet_layout(
+    readability: str = "scene",
+    pixel_budget: int = 1200000,
+    base_width: int = 1280,
+    max_cells: int = 16,
+) -> dict:
+    """在 16:9 画布和像素预算内规划每张最多几格。"""
+
+    key = str(readability or "scene").strip().lower()
+    if key not in NEED_SIZE:
+        key = "scene"
+    target_w, target_h = NEED_SIZE[key]
+    budget = max(200000, min(4000000, int(pixel_budget or 1200000)))
+    base_width = max(320, min(2560, int(base_width or 1280)))
+    width = min(base_width, max(320, int(math.sqrt(budget * 16 / 9))))
+    height = max(180, int(round(width * 9 / 16)))
+    max_cells = max(1, min(24, int(max_cells or 16)))
+    capacity = 1
+    columns = rows = 1
+    for count in range(1, max_cells + 1):
+        best_for_count = None
+        for cols in range(1, count + 1):
+            row_count = int(math.ceil(count / cols))
+            cell_w = (width - (cols + 1) * GUTTER) // max(1, cols)
+            cell_h = (height - (row_count + 1) * GUTTER) // max(1, row_count)
+            image_w = min(cell_w, int(cell_h * 16 / 9))
+            image_h = min(cell_h, int(image_w * 9 / 16))
+            if image_w < target_w * 0.95 or image_h < target_h * 0.95:
+                continue
+            score = image_w * image_h
+            if best_for_count is None or score > best_for_count[0]:
+                best_for_count = (score, cols, row_count)
+        if best_for_count is not None:
+            _, columns, rows = best_for_count
+            capacity = count
+    return {
+        "readability": key,
+        "width": width,
+        "height": height,
+        "capacity": capacity,
+        "columns": columns,
+        "rows": rows,
+        "pixel_budget": budget,
+        "target_cell": [target_w, target_h],
+    }
+
+
 def readability_capacity(readability: str) -> int:
     key = str(readability or "scene").strip().lower()
     return READABILITY_CAPACITY.get(key, READABILITY_CAPACITY["scene"])
+
+
+def _text_chars_between(lines: Iterable[Any], start: float, end: float) -> int:
+    total = 0
+    for item in lines or []:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        try:
+            stamp = float(item[0])
+        except Exception:
+            continue
+        if start <= stamp < end:
+            total += len(re.sub(r"[\s\W_]+", "", str(item[1] or "")))
+    return total
+
+
+def _scene_boundaries(
+    keyframes: Sequence[Any], duration: float, target: int
+) -> list[float]:
+    duration = max(0.1, float(duration or 0))
+    cuts = sorted(
+        float(getattr(item, "time", 0) or 0)
+        for item in keyframes
+        if getattr(item, "via", "") == "cut"
+        and 0.1 < float(getattr(item, "time", 0) or 0) < duration - 0.1
+    )
+    # 去重并合并过近切点，避免 0.1 秒一个“场景”。
+    boundaries = [0.0]
+    for stamp in cuts:
+        if stamp - boundaries[-1] >= 0.6:
+            boundaries.append(stamp)
+    boundaries.append(duration)
+    # 场景数远大于目标时，合并最短的相邻场景。
+    while len(boundaries) - 1 > max(1, target):
+        spans = [
+            (boundaries[index + 1] - boundaries[index], index)
+            for index in range(len(boundaries) - 1)
+        ]
+        _, merge_at = min(spans)
+        boundaries.pop(merge_at + 1)
+    return boundaries
+
+
+def plan_scene_times(
+    material: Any,
+    keyframes: Sequence[Any],
+    target: int,
+    duration: float,
+) -> list[dict]:
+    """按场景权重分配目标帧数；返回按时序排列的时间点。"""
+
+    duration = max(0.1, float(duration or 0))
+    target = max(1, int(target or 1))
+    boundaries = _scene_boundaries(keyframes, duration, target)
+    scenes = max(1, len(boundaries) - 1)
+    # 目标小于场景数时，上面已合并；补足到最少 1。
+    if scenes > target:
+        scenes = target
+        boundaries = [duration * i / target for i in range(target + 1)]
+    official = getattr(material, "subtitles", []) or []
+    asr = getattr(material, "asr_subtitles", []) or []
+    lines = official or asr
+    max_score = max(
+        [max(0.0, float(getattr(item, "score", 0) or 0)) for item in keyframes] or [1.0]
+    )
+    weights = []
+    for start, end in zip(boundaries, boundaries[1:]):
+        span = max(0.1, end - start)
+        scene_scores = [
+            max(0.0, float(getattr(item, "score", 0) or 0))
+            for item in keyframes
+            if start <= float(getattr(item, "time", 0) or 0) < end
+        ]
+        visual = (sum(scene_scores) / max(1, len(scene_scores))) / max(1.0, max_score)
+        chars = _text_chars_between(lines, start, end)
+        cpm = chars / max(1.0 / 60.0, span / 60.0)
+        text_gap = 1.0 - min(1.0, cpm / 240.0)
+        weights.append(0.25 + 0.75 * min(1.0, visual) + 0.25 * text_gap)
+
+    quotas = [1] * scenes
+    remaining = max(0, target - scenes)
+    while remaining > 0:
+        candidates = [index for index in range(scenes) if quotas[index] < 4]
+        if not candidates:
+            break
+        index = max(candidates, key=lambda pos: weights[pos] / (quotas[pos] + 1))
+        quotas[index] += 1
+        remaining -= 1
+
+    result: list[dict] = []
+    for scene_index, ((start, end), quota) in enumerate(
+        zip(zip(boundaries, boundaries[1:]), quotas)
+    ):
+        span = max(0.1, end - start)
+        existing = sorted(
+            float(getattr(item, "time", 0) or 0)
+            for item in keyframes
+            if start <= float(getattr(item, "time", 0) or 0) < end
+        )
+        for index in range(quota):
+            if index < len(existing):
+                stamp = existing[index]
+            else:
+                ratio = (index + 1) / (quota + 1)
+                stamp = start + span * ratio
+            result.append(
+                {
+                    "time": round(min(max(0.0, stamp), max(0.0, duration - 0.05)), 2),
+                    "from": round(start, 2),
+                    "to": round(end, 2),
+                    "via": "cut" if start > 0 else "mark",
+                    "score": max(0.0, weights[scene_index]),
+                }
+            )
+    return result
 
 
 def plan_frames(
@@ -272,6 +467,8 @@ def plan_frames(
     max_frames: int = 48,
     max_sheets: int = 8,
     readability: str = "scene",
+    pixel_budget: int = 1200000,
+    base_sheet_width: int = 1280,
 ) -> FramePlan:
     video = getattr(material, "video", None)
     duration = max(0, int(getattr(video, "duration", 0) or 0))
@@ -279,7 +476,13 @@ def plan_frames(
     visual = estimate_visual_profile(keyframes, duration)
     base = base_frames(duration)
     floor = frame_floor(duration)
-    capacity = readability_capacity(readability)
+    layout = plan_sheet_layout(
+        readability,
+        pixel_budget,
+        base_width=base_sheet_width,
+        max_cells=24,
+    )
+    capacity = int(layout["capacity"])
     max_frames = max(4, min(64, int(max_frames or 48)))
     max_sheets = max(1, min(12, int(max_sheets or 8)))
     cap = min(max_frames, capacity * max_sheets)
@@ -290,7 +493,8 @@ def plan_frames(
     reason = (
         f"时长 {duration}s，基础 {base:.1f}；"
         f"文本 {text.status}/{text.score:.2f}，画面 {visual.score:.2f}；"
-        f"目标 {target}（可读性 {readability}，每张 {capacity}，上限 {cap}）"
+        f"目标 {target}（可读性 {readability}，每张 {capacity}，"
+        f"画布 {layout['width']}×{layout['height']}，上限 {cap}）"
     )
     warnings = list(text.warnings)
     if target >= cap and raw > cap:
@@ -306,6 +510,9 @@ def plan_frames(
         cap=cap,
         cells_per_sheet=capacity,
         max_sheets=max_sheets,
+        sheet_width=int(layout["width"]),
+        sheet_height=int(layout["height"]),
+        pixel_budget=int(layout["pixel_budget"]),
         readability=readability,
         text=text,
         visual=visual,
