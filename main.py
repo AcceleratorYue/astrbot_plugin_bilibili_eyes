@@ -440,8 +440,9 @@ class BilibiliEyesPlugin(Star):
             if not isinstance(runtime, dict):
                 runtime = {}
                 self._config["runtime"] = runtime
+            marker_changed = not bool(runtime.get("_grouped_config_migrated"))
             runtime["_grouped_config_migrated"] = True
-            if changed:
+            if changed or marker_changed:
                 saver = getattr(self._config, "save_config", None)
                 if callable(saver):
                     try:
