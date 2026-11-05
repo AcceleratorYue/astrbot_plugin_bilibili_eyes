@@ -106,6 +106,12 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | `subtitle_langs` | string | `zh-Hans,zh,ai-zh,en` | 主字幕语言优先级 |
 | `subtitle_dual_enabled` | bool | true | 主字幕+不同语系辅字幕 |
 | `subtitle_secondary_langs` | string | `en,en-US,en-GB` | 辅字幕语言优先级 |
+| `ocr_subtitle_enabled` | bool | true | 内嵌字幕 OCR |
+| `ocr_subtitle_priority` | string | `after_ai` | 官方AI / OCR 优先级；ASR 最后 |
+| `ocr_subtitle_fps` | int | 1 | OCR 采样帧率 |
+| `ocr_subtitle_min_confidence` | float | 0.6 | OCR 置信度阈值 |
+| `ocr_subtitle_region` | string | `auto` | 字幕区域 |
+| `ocr_engine` | string | `auto` | OCR 引擎 |
 | `include_description` | bool | true | 简介 |
 | `include_comments` | bool | true | 评论 |
 | `comment_limit` | int | 12 | 热评数 |
