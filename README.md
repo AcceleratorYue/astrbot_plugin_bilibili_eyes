@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.12.1>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.12.2>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,7 +12,7 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.12.1
+## 当前版本 v0.12.2
 
 - 三种读取模式：普通、增强、**极致模式**；
   - 普通/增强的固定帧数与固定笔记预算保持不变；
@@ -96,6 +96,11 @@
 | `subtitle_langs` | zh-Hans,zh,ai-zh,en | 主字幕语言优先级；指定主字幕 |
 | `subtitle_dual_enabled` | 开 | 主字幕之外再抓一条不同语系的官方字幕 |
 | `subtitle_secondary_langs` | en,en-US,en-GB | 辅字幕语言优先级；主字幕已是英语时自动改找其他语系 |
+| `ocr_subtitle_enabled` | 开 | 无人工/AI 字幕时识别画面内嵌字幕，优先级高于 ASR |
+| `ocr_subtitle_priority` | after_ai | after_ai=官方 AI 优先；before_ai=内嵌 OCR 优先；ASR 永远最后 |
+| `ocr_subtitle_fps` | 1 | OCR 采样帧率 |
+| `ocr_subtitle_min_confidence` | 0.6 | OCR 最低置信度 |
+| `ocr_engine` | auto | OCR 引擎；默认 RapidOCR |
 | `vision_provider_id` | 空 | 空 = 跟随主模型；主模型无视觉则不截帧（文本笔记）。也可指定支持图片的 provider |
 | `nl_trigger_enabled` | 开 | 视频自然语言触发（UP 主只用 `/看主页`） |
 | `user_daily_quota` | 20 | 每用户每日次数；0=不限制 |
@@ -205,7 +210,7 @@ bilibili_transcript(
 ```
 
 - 支持关键词、时间范围；
-- `source=official/asr/both`；
+- `source=official/ai/ocr/asr/both`；
 - `lang=zh/en/ja/ko` 过滤字幕轨，空 = 全部；
 - 官方字幕和 ASR 分开标注；
 - ASR 时间戳标“约”；
@@ -378,6 +383,31 @@ bilibili_transcript(query="wallet", lang="en")
 ```
 
 支持 `zh / en / ja / ko`；不填则搜索全部字幕轨。WebUI 原文检索页也有语言下拉。
+
+## 内嵌字幕 OCR
+
+有些视频没有 B 站字幕轨，但字幕已经烧进画面。启用内嵌 OCR 后，文本来源优先级为：
+
+```text
+官方人工字幕
+  > B站 AI 字幕
+  > 内嵌画面字幕 OCR
+  > 本地 ASR
+```
+
+ASR 永远是最后兜底；有 OCR 时不会用 ASR 覆盖。
+
+- 采样：默认 1 fps；
+- 区域：底部约 32%，可配置 `bottom/top`；
+- 引擎：RapidOCR（`rapidocr_onnxruntime`）；
+- 连续相同字幕合并，短于一帧的噪声过滤；
+- OCR 字幕标记为“内嵌OCR”，提示词要求把不确定的专有名词/数字写入“不确定项”；
+- OCR 覆盖率低于 15% 时回退 ASR；
+- 双语硬字幕尝试拆成主/辅两轨。
+
+前提：安装 `rapidocr_onnxruntime`（已加入 `requirements.txt`）。OCR 失败或未安装时自动回退 ASR。
+
+完整方案见：[内嵌字幕OCR与ASR优先级增强方案_20261105.md](docs/内嵌字幕OCR与ASR优先级增强方案_20261105.md)。
 
 ## 音频转录（ASR）
 

@@ -191,6 +191,8 @@ class SubtitleTrack:
     role: str = "primary"
     is_ai: bool = False
     bilingual: bool = False
+    origin: str = "official"
+    confidence: float = 1.0
 
 
 @dataclass
@@ -198,6 +200,7 @@ class Material:
     video: VideoInfo
     subtitles: list[tuple[float, str]] = field(default_factory=list)
     subtitle_source: str = "official"
+    ocr_status: str = "unknown"
     subtitle_lang: str = ""
     subtitle_lang_doc: str = ""
     subtitle_tracks: list[SubtitleTrack] = field(default_factory=list)
@@ -451,6 +454,8 @@ class BiliClient:
             role=role,
             is_ai=bool(meta.get("is_ai")),
             bilingual=cjk >= 4 and latin >= 12,
+            origin="ai" if meta.get("is_ai") else "official",
+            confidence=1.0,
         )
 
     def get_subtitle_tracks(
@@ -802,6 +807,87 @@ class BiliClient:
             str(max(1, int(max_seconds))),
             "-vf",
             f"fps={max(1, int(fps))},scale={int(width)}:{int(height)}",
+            "-an",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        frame_size = max(1, int(width)) * max(1, int(height)) * 3
+        index = 0
+        try:
+            assert process.stdout is not None
+            while True:
+                raw = process.stdout.read(frame_size)
+                if not raw or len(raw) < frame_size:
+                    break
+                yield index / max(1, int(fps)), raw
+                index += 1
+        finally:
+            try:
+                process.terminate()
+                process.wait(timeout=3)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+
+    def iter_subtitle_frames(
+        self,
+        stream_url: str,
+        duration: float,
+        fps: int = 1,
+        region: str = "auto",
+        max_seconds: int = 1200,
+        width: int = 960,
+        height: int = 320,
+        referer: str = "https://www.bilibili.com/",
+    ):
+        """按 fps 输出裁剪后的字幕区域 RGB 帧，供 OCR 使用。"""
+
+        if not isinstance(stream_url, str) or not stream_url.startswith(
+            ("http://", "https://")
+        ):
+            return
+        key = str(region or "auto").strip().lower()
+        if key == "top":
+            crop = f"crop=iw:ih*0.35:0:0"
+        else:
+            crop = "crop=iw:ih*0.32:0:ih*0.68"
+        headers = (
+            "Referer: "
+            + referer
+            + chr(13)
+            + chr(10)
+            + "User-Agent: "
+            + self.http._headers.get("User-Agent", "")
+            + chr(13)
+            + chr(10)
+        )
+        limit = min(
+            max(1, int(max_seconds or 1200)),
+            max(1, int(duration or max_seconds or 1200)),
+        )
+        cmd = [
+            self._ffmpeg_exe(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-headers",
+            headers,
+            "-i",
+            stream_url,
+            "-t",
+            str(limit),
+            "-vf",
+            f"fps={max(1, int(fps))},{crop},scale={int(width)}:{int(height)}",
             "-an",
             "-f",
             "rawvideo",

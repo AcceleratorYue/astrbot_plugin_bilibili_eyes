@@ -177,6 +177,8 @@ class PluginWebApi:
                     "asr_count": transcript.get("asr_count", 0),
                     "languages": transcript.get("languages", []),
                     "track_count": transcript.get("track_count", 0),
+                    "text_origin": meta.get("text_origin", ""),
+                    "ocr_status": meta.get("ocr_status", ""),
                     "frames": int(meta.get("frames") or 0),
                     "core_chars": int(meta.get("core_chars") or 0),
                     "other_chars": int(meta.get("other_chars") or 0),
@@ -205,7 +207,7 @@ class PluginWebApi:
             last = videos[0] if videos else None
             return self._ok(
                 overview={
-                    "version": "0.12.1",
+                    "version": "0.12.2",
                     "enabled": self.plugin._bool_opt("enabled"),
                     "video_mode": self.plugin._video_mode(),
                     "last_video": last,
@@ -290,6 +292,8 @@ class PluginWebApi:
                             "lang": track.get("lang", ""),
                             "lang_doc": track.get("lang_doc", ""),
                             "role": track.get("role", ""),
+                            "origin": track.get("origin", "official"),
+                            "confidence": track.get("confidence", 1.0),
                             "line_count": len(track.get("lines") or []),
                         }
                         for track in (transcript or {}).get("tracks") or []

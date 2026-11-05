@@ -21,6 +21,7 @@ import eyes_card  # noqa: E402
 import eyes_client as bc  # noqa: E402
 import eyes_enhanced as ee  # noqa: E402
 import eyes_extreme as ex  # noqa: E402
+import eyes_ocr as eo  # noqa: E402
 import eyes_subagent as sa  # noqa: E402
 import eyes_transcript as et  # noqa: E402
 
@@ -979,6 +980,52 @@ def test_compression_and_candidate_times() -> None:
     print("✅ 极致超预算：二次压缩 / 候选帧避开切点")
 
 
+def test_embedded_ocr_and_asr_quality() -> None:
+    class FakeFrames:
+        def iter_subtitle_frames(self, *args, **kwargs):
+            for index in range(8):
+                yield float(index), bytes([(index * 73 + 20) % 256]) * (960 * 320 * 3)
+
+    class FakeEngine:
+        def __init__(self):
+            self.calls = 0
+
+        def recognize(self, image):
+            self.calls += 1
+            if self.calls <= 4:
+                return [("这就是问题所在", 0.92, 0)]
+            return [("That is the problem", 0.91, 0)]
+
+    config = eo.OcrConfig(enabled=True, fps=1, min_confidence=0.6, min_coverage=0.1)
+    result = eo.extract_embedded_subtitles(
+        FakeFrames(), "https://example.invalid/v", 8.0, config, engine=FakeEngine()
+    )
+    assert result.tracks and result.tracks[0].origin == "ocr"
+    assert result.tracks[0].lines
+    assert result.coverage > 0.1
+
+    ok, reason = eo.evaluate_asr_quality(["why?", "why?", "why?", "why?"])
+    assert not ok and reason in ("high_repetition", "filler_heavy")
+    ok, _ = eo.evaluate_asr_quality(["这是完整的一句话", "第二句有实际内容", "第三句也正常"])
+    assert ok
+    import main as plugin_main
+
+    plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+    plugin._config = {
+        **plugin_main.DEFAULT_OPTIONS,
+        "ocr_subtitle_enabled": True,
+        "ocr_subtitle_priority": "after_ai",
+    }
+    ai_track = bc.SubtitleTrack("zh", "中文", [(0.0, "AI")], origin="ai", is_ai=True)
+    human_track = bc.SubtitleTrack("zh", "中文", [(0.0, "人工")], origin="official")
+    assert plugin._should_try_ocr([]) is True
+    assert plugin._should_try_ocr([ai_track]) is False
+    assert plugin._should_try_ocr([human_track]) is False
+    plugin._config["ocr_subtitle_priority"] = "before_ai"
+    assert plugin._should_try_ocr([ai_track]) is True
+    print("✅ 内嵌 OCR：采样/去重/置信度 / ASR 幻觉质量门")
+
+
 def test_video_mode() -> None:
     import main as plugin_main
 
@@ -1313,7 +1360,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.12.1" in meta
+    assert "version: 0.12.2" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1370,6 +1417,7 @@ def main() -> int:
     test_compression_and_candidate_times()
     test_video_mode()
     test_bilingual_subtitle_tracks()
+    test_embedded_ocr_and_asr_quality()
     test_transcript_direct_read()
     test_config_grouping()
     test_web_api_registration_and_cache_listing()

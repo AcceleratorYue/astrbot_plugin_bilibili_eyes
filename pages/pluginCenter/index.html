@@ -27,7 +27,7 @@
           <button class="nav-item" data-view="settings" type="button">配置摘要</button>
         </nav>
         <div class="sidebar-foot">
-          <span id="versionLabel">v0.12.1</span>
+          <span id="versionLabel">v0.12.2</span>
           <button id="refreshBtn" class="link-btn" type="button">刷新</button>
         </div>
       </aside>
@@ -107,6 +107,8 @@
               <select id="transcriptSource">
                 <option value="both">官方 + ASR</option>
                 <option value="official">官方字幕</option>
+                <option value="ai">官方 AI 字幕</option>
+                <option value="ocr">内嵌 OCR</option>
                 <option value="asr">ASR</option>
               </select>
             </label>
@@ -186,7 +188,7 @@
             <div class="toolbar wrap">
               <label class="search"><span>关键词</span><input id="detailRawQuery" type="search" placeholder="关键词…" /></label>
               <label class="select"><span>来源</span>
-                <select id="detailRawSource"><option value="both">官方 + ASR</option><option value="official">官方</option><option value="asr">ASR</option></select>
+                <select id="detailRawSource"><option value="both">全部来源</option><option value="official">官方</option><option value="ai">官方 AI</option><option value="ocr">内嵌 OCR</option><option value="asr">ASR</option></select>
               </label>
               <label class="select"><span>语言</span>
                 <select id="detailRawLang"><option value="">全部字幕轨</option><option value="zh">中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option></select>

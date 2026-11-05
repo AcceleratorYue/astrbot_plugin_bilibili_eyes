@@ -492,6 +492,64 @@
         "hint": "逗号分隔，如 en,en-US,en-GB；主字幕已是英语时自动改为找其他语系",
         "default": "en,en-US,en-GB"
       },
+      "ocr_subtitle_enabled": {
+        "description": "启用内嵌字幕 OCR",
+        "type": "bool",
+        "hint": "官方/AI 字幕不可用时识别画面里的硬字幕；优先级高于 ASR",
+        "default": true
+      },
+      "ocr_subtitle_mode": {
+        "description": "内嵌 OCR 模式",
+        "type": "string",
+        "hint": "auto=按优先级自动；always=有官方字幕也尝试 OCR（仍不覆盖官方）",
+        "options": ["auto", "always"],
+        "default": "auto"
+      },
+      "ocr_subtitle_priority": {
+        "description": "OCR 与 B站 AI 字幕优先级",
+        "type": "string",
+        "hint": "after_ai=官方AI优先；before_ai=内嵌OCR优先；ASR永远最后",
+        "options": ["after_ai", "before_ai"],
+        "default": "after_ai"
+      },
+      "ocr_subtitle_fps": {
+        "description": "OCR 采样帧率",
+        "type": "int",
+        "hint": "默认1；字幕切换很快可设2",
+        "default": 1
+      },
+      "ocr_subtitle_min_confidence": {
+        "description": "OCR 最低置信度",
+        "type": "float",
+        "hint": "默认0.6；低于阈值的文字不进入正文",
+        "default": 0.6
+      },
+      "ocr_subtitle_region": {
+        "description": "内嵌字幕区域",
+        "type": "string",
+        "hint": "默认auto（当前按底部）；可指定bottom/top",
+        "options": ["auto", "bottom", "top"],
+        "default": "auto"
+      },
+      "ocr_engine": {
+        "description": "OCR 引擎",
+        "type": "string",
+        "hint": "auto/rapidocr；需要安装 rapidocr_onnxruntime",
+        "options": ["auto", "rapidocr"],
+        "default": "auto"
+      },
+      "ocr_subtitle_max_seconds": {
+        "description": "OCR 最多分析秒数",
+        "type": "int",
+        "hint": "默认1200；长视频可限制",
+        "default": 1200
+      },
+      "ocr_subtitle_min_coverage": {
+        "description": "OCR 最低覆盖率",
+        "type": "float",
+        "hint": "低于该覆盖率则回退 ASR/无字幕；默认0.15",
+        "default": 0.15
+      },
       "include_description": {
         "description": "读取简介",
         "type": "bool",

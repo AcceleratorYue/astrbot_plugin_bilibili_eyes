@@ -42,6 +42,7 @@ import eyes_transcript as et
 from eyes_cache import MaterialStore, NoteCache
 from eyes_card import extract_bilibili_card_url
 from plugin_api import PluginWebApi
+import eyes_ocr as ocr
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_eyes"
 LOG = "[B站之眼]"
@@ -122,6 +123,15 @@ DEFAULT_OPTIONS: dict = {
     "subtitle_langs": "zh-Hans,zh,ai-zh,en",
     "subtitle_dual_enabled": True,
     "subtitle_secondary_langs": "en,en-US,en-GB",
+    "ocr_subtitle_enabled": True,
+    "ocr_subtitle_mode": "auto",
+    "ocr_subtitle_fps": 1,
+    "ocr_subtitle_min_confidence": 0.6,
+    "ocr_subtitle_region": "auto",
+    "ocr_subtitle_priority": "after_ai",
+    "ocr_engine": "auto",
+    "ocr_subtitle_max_seconds": 1200,
+    "ocr_subtitle_min_coverage": 0.15,
     "include_description": True,
     "include_comments": True,
     "comment_limit": 12,
@@ -262,6 +272,15 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "subtitle_langs",
         "subtitle_dual_enabled",
         "subtitle_secondary_langs",
+        "ocr_subtitle_enabled",
+        "ocr_subtitle_mode",
+        "ocr_subtitle_fps",
+        "ocr_subtitle_min_confidence",
+        "ocr_subtitle_region",
+        "ocr_subtitle_priority",
+        "ocr_engine",
+        "ocr_subtitle_max_seconds",
+        "ocr_subtitle_min_coverage",
         "include_description",
         "include_comments",
         "comment_limit",
@@ -362,7 +381,7 @@ class BilibiliEyesPlugin(Star):
         self._transcripts = None
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.12.1 已加载")
+        logger.info(f"{LOG} 插件 v0.12.2 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -1174,7 +1193,7 @@ class BilibiliEyesPlugin(Star):
             query(string): 要查找的关键词或原话片段；为空时按时间范围查
             start(string): 起始秒数；0 表示不限
             end(string): 结束秒数；0 表示到结尾
-            source(string): official / asr / both
+            source(string): official / ai / ocr / asr / both
             max_lines(string): 最多返回多少行，1~50
             lang(string): 可选语言过滤，如 zh / en / ja / ko；空 = 全部字幕轨
             bvid(string): 可选；不填使用当前会话最近看过的视频
@@ -1582,6 +1601,19 @@ class BilibiliEyesPlugin(Star):
                 material.warnings.append("音频转录失败：所有分块都没有结果")
                 return
             merged = ec.merge_subtitles(parts)
+            quality_ok, quality_reason = ocr.evaluate_asr_quality(
+                [text for _stamp, text in merged]
+            )
+            if not quality_ok:
+                material.asr_status = "low_quality"
+                material.warnings.append(
+                    f"音频转录质量低（{quality_reason}），未进入主文本"
+                )
+                logger.warning(
+                    f"{LOG} ASR 低质量：{material.video.bvid} "
+                    f"reason={quality_reason}"
+                )
+                return
             material.asr_status = "available"
             material.audio_transcript_partial = transcribed_seconds < duration
             if failed_chunks:
@@ -1624,6 +1656,104 @@ class BilibiliEyesPlugin(Star):
             logger.warning(f"{LOG} ASR 异常：{exc}")
             material.warnings.append("音频转录失败，已跳过")
 
+    def _ocr_config(self) -> ocr.OcrConfig:
+        return ocr.OcrConfig(
+            enabled=self._bool_opt("ocr_subtitle_enabled"),
+            mode=str(self._opt("ocr_subtitle_mode") or "auto"),
+            fps=self._int_opt("ocr_subtitle_fps", 1),
+            min_confidence=float(self._opt("ocr_subtitle_min_confidence") or 0.6),
+            region=str(self._opt("ocr_subtitle_region") or "auto"),
+            engine=str(self._opt("ocr_engine") or "auto"),
+            max_seconds=self._int_opt("ocr_subtitle_max_seconds", 1200),
+            min_coverage=float(self._opt("ocr_subtitle_min_coverage") or 0.15),
+        )
+
+    def _should_try_ocr(self, tracks: list[bc.SubtitleTrack]) -> bool:
+        if not self._bool_opt("include_subtitle"):
+            return False
+        if not self._bool_opt("ocr_subtitle_enabled"):
+            return False
+        mode = str(self._opt("ocr_subtitle_mode") or "auto").strip().lower()
+        if not tracks:
+            return True
+        human = [
+            track
+            for track in tracks
+            if (track.origin or ("ai" if track.is_ai else "official")) == "official"
+        ]
+        if human:
+            return False
+        ai = [track for track in tracks if track.is_ai or track.origin == "ai"]
+        if ai:
+            if mode == "always":
+                return True
+            return str(self._opt("ocr_subtitle_priority") or "after_ai") == "before_ai"
+        return True
+
+    def _apply_subtitle_tracks(
+        self,
+        material: bc.Material,
+        tracks: list[bc.SubtitleTrack],
+        source: str,
+    ) -> None:
+        if not tracks:
+            return
+        primary = tracks[0]
+        primary.lines = ec.merge_subtitles(primary.lines)
+        material.subtitles = primary.lines
+        material.subtitle_lang = primary.lang
+        material.subtitle_lang_doc = primary.lang_doc
+        material.subtitle_tracks = tracks
+        material.subtitle_source = source
+        if len(tracks) > 1:
+            secondary = tracks[1]
+            secondary.lines = ec.merge_subtitles(secondary.lines)
+            material.secondary_subtitles = secondary.lines
+            material.secondary_lang = secondary.lang
+            material.secondary_lang_doc = secondary.lang_doc
+        else:
+            material.secondary_subtitles = []
+            material.secondary_lang = ""
+            material.secondary_lang_doc = ""
+
+    async def _fill_ocr_subtitles(
+        self, material: bc.Material, client, job: Job
+    ) -> bool:
+        cfg = self._ocr_config()
+        if not cfg.enabled:
+            return False
+        if job:
+            job.stage = "内嵌字幕 OCR"
+        try:
+            info = await self._run(
+                client.get_stream_info, material.video.bvid, material.video.cid
+            )
+            result = await self._run(
+                ocr.extract_embedded_subtitles,
+                client,
+                info.video_url,
+                float(material.video.duration or 0),
+                cfg,
+            )
+        except Exception as exc:
+            material.warnings.append(f"内嵌字幕 OCR 失败：{type(exc).__name__}")
+            return False
+        material.warnings.extend(result.warnings)
+        material.ocr_status = result.status
+        if result.status == "available" and result.coverage >= cfg.min_coverage:
+            self._apply_subtitle_tracks(material, result.tracks, "ocr")
+            material.official_status = "absent"
+            material.warnings.append(
+                f"内嵌字幕 OCR：{len(material.subtitles)} 条 / "
+                f"覆盖率 {result.coverage:.0%} / {result.elapsed:.1f}s"
+            )
+            logger.info(
+                f"{LOG} 内嵌字幕 OCR：{material.video.bvid} "
+                f"{len(result.tracks)} 轨 / 覆盖 {result.coverage:.0%}"
+            )
+            return True
+        return False
+
     async def _collect(
         self, job: Job, ref: str, page: int | None, event=None
     ) -> bc.Material:
@@ -1645,11 +1775,19 @@ class BilibiliEyesPlugin(Star):
             cached = self._cache.get(
                 video.bvid, video.page, self._cache_variant()
             )
-            if cached and self._bool_opt("subtitle_dual_enabled"):
-                # 旧笔记缓存没有双语字幕标记；忽略一次，重新生成。
+            if cached and (
+                self._bool_opt("subtitle_dual_enabled")
+                or self._bool_opt("ocr_subtitle_enabled")
+            ):
+                # 旧笔记缓存没有双语/OCR 标记；忽略一次，重新生成。
                 record = self._cache.get_record(video.bvid, video.page)
-                if not record or not (record.get("meta") or {}).get(
+                meta = (record or {}).get("meta") or {}
+                if self._bool_opt("subtitle_dual_enabled") and not meta.get(
                     "subtitle_dual_checked"
+                ):
+                    cached = None
+                if self._bool_opt("ocr_subtitle_enabled") and not meta.get(
+                    "ocr_checked"
                 ):
                     cached = None
             if cached:
@@ -1681,6 +1819,7 @@ class BilibiliEyesPlugin(Star):
             job.stage = "取播放器信息"
             player = await self._run(client.get_player, video.bvid, video.cid)
             material.view_points = client.get_view_point_times(player)
+            tracks: list[bc.SubtitleTrack] = []
             if self._bool_opt("include_subtitle"):
                 tracks = await self._run(
                     client.get_subtitle_tracks,
@@ -1690,23 +1829,15 @@ class BilibiliEyesPlugin(Star):
                     dual_subtitles,
                 )
                 if tracks:
-                    primary = tracks[0]
-                    primary.lines = ec.merge_subtitles(primary.lines)
-                    material.subtitles = primary.lines
-                    material.subtitle_lang = primary.lang
-                    material.subtitle_lang_doc = primary.lang_doc
-                    material.subtitle_tracks = tracks
-                    if len(tracks) > 1:
-                        secondary = tracks[1]
-                        secondary.lines = ec.merge_subtitles(secondary.lines)
-                        material.secondary_subtitles = secondary.lines
-                        material.secondary_lang = secondary.lang
-                        material.secondary_lang_doc = secondary.lang_doc
+                    source = "ai" if tracks[0].is_ai else "official"
+                    self._apply_subtitle_tracks(material, tracks, source)
                 material.official_status = (
                     "available" if material.subtitles else "absent"
                 )
                 if not material.subtitles:
                     material.warnings.append("无可用字幕（可能是游客态或视频本身无字幕）")
+                if self._should_try_ocr(tracks):
+                    await self._fill_ocr_subtitles(material, client, job)
         except bc.BiliError as exc:
             material.official_status = "failed"
             material.warnings.append(f"播放器信息不可用：{exc.reason}")
@@ -1850,6 +1981,9 @@ class BilibiliEyesPlugin(Star):
                         ],
                         "subtitle_dual": len(material.subtitle_tracks) > 1,
                         "subtitle_dual_checked": True,
+                        "ocr_checked": True,
+                        "ocr_status": material.ocr_status,
+                        "text_origin": material.subtitle_source,
                         "core_chars": len(sa.split_note_sections(digest)[0]),
                         "other_chars": len(sa.split_note_sections(digest)[1]),
                     },

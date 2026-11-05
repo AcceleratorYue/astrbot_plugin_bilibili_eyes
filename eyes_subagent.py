@@ -272,8 +272,21 @@ def build_material_prompt(
     if ignored_links > 0:
         parts.append(f"注意：用户消息里还有 {ignored_links} 个额外链接，本次只看第一个。")
     secondary = getattr(material, "secondary_subtitles", []) or []
-    primary_label = getattr(material, "subtitle_lang_doc", "") or "主字幕"
-    secondary_label = getattr(material, "secondary_lang_doc", "") or "辅字幕"
+    source = str(getattr(material, "subtitle_source", "official") or "official")
+    source_label = {
+        "official": "官方人工字幕",
+        "ai": "官方AI字幕",
+        "ocr": "内嵌OCR",
+        "asr": "ASR",
+    }.get(source, "字幕")
+    primary_lang = getattr(material, "subtitle_lang_doc", "") or "主字幕"
+    secondary_lang = getattr(material, "secondary_lang_doc", "") or "辅字幕"
+    primary_label = f"{source_label}·{primary_lang}" if primary_lang else source_label
+    secondary_label = (
+        f"{source_label}辅轨·{secondary_lang}"
+        if secondary_lang
+        else f"{source_label}辅轨"
+    )
     subtitle_text = (
         format_bilingual_subtitles(
             material.subtitles,
@@ -295,13 +308,9 @@ def build_material_prompt(
                 "两者冲突时标注来源，不要自行拼出原文没有的句子。"
             )
         else:
-            label = (
-                f"（{primary_label}）"
-                if primary_label and primary_label != "主字幕"
-                else ""
-            )
             parts.append(
-                f"字幕{label}（已按标点/停顿合并碎片，带时间戳）：\n"
+                f"字幕（{primary_label}；已按标点/停顿合并碎片，带时间戳）："
+                + chr(10)
                 + subtitle_text
             )
         highlights = subtitle_highlights(material.subtitles, limit=5)
@@ -315,6 +324,17 @@ def build_material_prompt(
             )
     else:
         parts.append("字幕：没有可用字幕（不要编造台词，只能依据画面与简介）。")
+    if source == "ocr":
+        parts.append(
+            "内嵌字幕来源说明：OCR 可能有错字，时间戳为近似；"
+            "不确定的专有名词/数字必须标注为不确定，不要自行补全。"
+        )
+    if source == "asr":
+        parts.append(
+            "ASR 来源说明：ASR 可能在无语音段产生重复或空句；"
+            "重复、无意义内容不得写进正文，只能列为不确定项。"
+        )
+
     asr_text = format_subtitles(getattr(material, "asr_subtitles", []))
     if asr_text:
         parts.append(

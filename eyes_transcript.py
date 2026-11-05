@@ -44,6 +44,11 @@ def _normalize_track(track: Any) -> dict:
         role = str(track.get("role") or "primary")
         is_ai = bool(track.get("is_ai"))
         bilingual = bool(track.get("bilingual"))
+        origin = str(track.get("origin") or ("ai" if is_ai else "official"))
+        try:
+            confidence = float(track.get("confidence") or 1.0)
+        except (TypeError, ValueError):
+            confidence = 1.0
         lines = track.get("lines") or track.get("body") or []
     else:
         lang = str(getattr(track, "lang", "") or "")
@@ -51,6 +56,11 @@ def _normalize_track(track: Any) -> dict:
         role = str(getattr(track, "role", "primary") or "primary")
         is_ai = bool(getattr(track, "is_ai", False))
         bilingual = bool(getattr(track, "bilingual", False))
+        origin = str(getattr(track, "origin", "") or ("ai" if is_ai else "official"))
+        try:
+            confidence = float(getattr(track, "confidence", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            confidence = 1.0
         lines = getattr(track, "lines", []) or []
     return {
         "lang": lang,
@@ -58,6 +68,8 @@ def _normalize_track(track: Any) -> dict:
         "role": role,
         "is_ai": is_ai,
         "bilingual": bilingual,
+        "origin": origin,
+        "confidence": confidence,
         "lines": [list(item) for item in _normalize_lines(lines)],
     }
 
@@ -77,6 +89,8 @@ def _doc_tracks(doc: dict) -> list[dict]:
                 "role": "primary",
                 "is_ai": False,
                 "bilingual": False,
+                "origin": "official",
+                "confidence": 1.0,
                 "lines": [list(item) for item in official],
             }
         )
@@ -88,6 +102,8 @@ def _doc_tracks(doc: dict) -> list[dict]:
                 "role": "secondary",
                 "is_ai": False,
                 "bilingual": False,
+                "origin": "official",
+                "confidence": 1.0,
                 "lines": [list(item) for item in secondary],
             }
         )
@@ -95,10 +111,21 @@ def _doc_tracks(doc: dict) -> list[dict]:
 
 
 def _track_label(track: dict) -> str:
+    origin = str(track.get("origin") or "official")
+    labels = {
+        "official": "官方字幕",
+        "ai": "官方AI字幕",
+        "ocr": "内嵌OCR",
+        "asr": "ASR",
+    }
+    base = labels.get(origin, "官方字幕")
     if track.get("role") == "secondary":
-        base = "官方辅轨"
-    else:
-        base = "官方字幕"
+        base = {
+            "official": "官方辅轨",
+            "ai": "官方AI辅轨",
+            "ocr": "内嵌OCR辅轨",
+            "asr": "ASR辅轨",
+        }.get(origin, "辅轨")
     lang = str(track.get("lang_doc") or track.get("lang") or "").strip()
     return f"{base}·{lang}" if lang else base
 
@@ -337,7 +364,7 @@ def search(
     """在官方主/辅字幕与 ASR 中查找片段；返回可直接给主模型的结果。"""
 
     source = str(source or "both").strip().lower()
-    if source not in ("official", "asr", "both"):
+    if source not in ("official", "ai", "ocr", "asr", "both"):
         source = "both"
     max_lines = max(1, min(50, int(max_lines or 20)))
     max_chars = max(300, min(6000, int(max_chars or DEFAULT_TOTAL_CHARS)))
@@ -366,20 +393,27 @@ def search(
                 "role": str(track.get("role") or ""),
                 "label": (
                     _track_label(track)
-                    if source_name == "official"
+                    if source_name != "asr"
                     else "ASR（约）"
                 ),
             }
         )
 
-    if source in ("official", "both"):
+    if source in ("official", "ai", "ocr", "both"):
         for track in _doc_tracks(doc):
+            origin = str(track.get("origin") or "official")
+            if source == "official" and origin not in ("official", "ai"):
+                continue
+            if source == "ai" and origin != "ai":
+                continue
+            if source == "ocr" and origin != "ocr":
+                continue
             if lang and not _lang_matches(
                 str(track.get("lang_doc") or track.get("lang") or ""), lang
             ):
                 continue
             for stamp, text in track.get("lines") or []:
-                add_row(float(stamp), str(text), "official", track)
+                add_row(float(stamp), str(text), origin, track)
     if source == "asr" or (source == "both" and not lang):
         for stamp, text in doc.get("asr") or []:
             add_row(float(stamp), str(text), "asr")

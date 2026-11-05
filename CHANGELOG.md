@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.12.2 (2026-11-05)
+
+实现内嵌画面字幕 OCR，并修正文本来源优先级。
+
+### 内嵌 OCR
+
+- 新增 `eyes_ocr.py`：ffmpeg 裁剪底部字幕区、1 fps 采样、帧差跳过重复帧、RapidOCR 识别、连续字幕去重/时间轴合并；
+- 新增 `ocr_subtitle_enabled`、`ocr_subtitle_priority`、`ocr_subtitle_fps`、`ocr_subtitle_min_confidence`、`ocr_subtitle_region`、`ocr_engine` 等配置；
+- OCR 字幕写入 `SubtitleTrack(origin="ocr")`，进入提示词、原文缓存、WebUI 和 `bilibili_transcript`；
+- OCR 覆盖不足/引擎不可用时自动回退 ASR；
+- 双语硬字幕尝试拆成主/辅两条 OCR 轨。
+
+### 优先级与 ASR
+
+- 修正为：官方人工字幕 > B站 AI 字幕 > 内嵌 OCR > 本地 ASR；
+- `ocr_subtitle_priority=before_ai` 时改为：官方人工 > 内嵌 OCR > B站 AI > ASR；
+- ASR 增加质量门：高重复、`why?` 等空句、过短句判定 `low_quality`，不进入主文本；
+- OCR 成功时默认不再触发 ASR；
+- `bilibili_transcript` 增加 `source=ai/ocr`，`lang` 过滤继续生效。
+
+### 测试
+
+- 新增内嵌 OCR 采样/去重/置信度测试；
+- 新增 ASR 幻觉质量门测试；
+- 新增 OCR 优先级测试；
+- 全部离线测试通过。
+
 ## 0.12.1 (2026-11-05)
 
 修复 WebUI 上线后暴露的问题，补齐双语字幕与极致取帧兜底。

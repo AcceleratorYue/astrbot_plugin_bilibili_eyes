@@ -1,1 +1,2 @@
 imageio-ffmpeg>=0.4
+rapidocr_onnxruntime>=1.3
