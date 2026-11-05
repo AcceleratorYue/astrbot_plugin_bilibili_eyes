@@ -147,8 +147,9 @@ def _fill_keyframes(
     if len(items) >= limit or duration <= 0:
         return items
     occupied = [item.time for item in items]
-    for index in range(limit - len(items)):
-        ratio = (index + 1) / (limit - len(items) + 1)
+    need = max(0, limit - len(items))
+    for index in range(need):
+        ratio = (index + 1) / (need + 1)
         timestamp = duration * (0.05 + 0.9 * ratio)
         if all(abs(timestamp - old) > 1.0 for old in occupied):
             items.append(Keyframe(timestamp, 0.0, "uniform"))

@@ -376,6 +376,11 @@ def _scene_boundaries(
         if stamp - boundaries[-1] >= 0.6:
             boundaries.append(stamp)
     boundaries.append(duration)
+    # 切点太少时补均匀时间边界，避免整段只剩 1~2 个场景，
+    # 导致帧预算被单场景的 4 帧上限吃掉。
+    min_scenes = max(1, min(target, int(math.ceil(target / 4.0))))
+    if len(boundaries) - 1 < min_scenes:
+        boundaries = [duration * index / min_scenes for index in range(min_scenes + 1)]
     # 场景数远大于目标时，合并最短的相邻场景。
     while len(boundaries) - 1 > max(1, target):
         spans = [
@@ -443,12 +448,22 @@ def plan_scene_times(
             for item in keyframes
             if start <= float(getattr(item, "time", 0) or 0) < end
         )
+        used: set[float] = set()
         for index in range(quota):
-            if index < len(existing):
-                stamp = existing[index]
-            else:
-                ratio = (index + 1) / (quota + 1)
-                stamp = start + span * ratio
+            ratio = (index + 1) / (quota + 1)
+            target_time = start + span * ratio
+            stamp = target_time
+            if existing:
+                nearest = min(
+                    (value for value in existing if value not in used),
+                    key=lambda value: abs(value - target_time),
+                    default=None,
+                )
+                if nearest is not None and abs(nearest - target_time) <= max(
+                    1.0, span / max(1, quota) * 0.75
+                ):
+                    stamp = nearest
+                    used.add(nearest)
             result.append(
                 {
                     "time": round(min(max(0.0, stamp), max(0.0, duration - 0.05)), 2),

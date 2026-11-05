@@ -926,6 +926,21 @@ def test_extreme_planner() -> None:
     assert all(row["from"] <= row["time"] <= row["to"] for row in scene_rows)
     groups = ex.candidate_groups(text_keys, 76)
     assert groups and all(group["times"] for group in groups)
+
+    # 无切点/长静态视频：均匀补齐 keyframes，且场景分配必须覆盖全时段。
+    uniform = ee._fill_keyframes(
+        [ee.Keyframe(0.0, 0.0, "first")], 182.0, 12
+    )
+    assert uniform and max(item.time for item in uniform) <= 182.0
+    static_material = SimpleNamespace(
+        video=SimpleNamespace(duration=182),
+        subtitles=[],
+        asr_subtitles=[],
+    )
+    sparse_keys = [ee.Keyframe(0.0, 0.0, "first"), ee.Keyframe(11.0, 16.0, "cut")]
+    sparse_rows = ex.plan_scene_times(static_material, sparse_keys, 15, 182.0)
+    assert len(sparse_rows) == 15
+    assert max(row["time"] for row in sparse_rows) > 150.0
     print("✅ 极致模式：动态帧预算 / 文本画像 / 笔记预算 / 像素布局 / 场景分配")
 
 
