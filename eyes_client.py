@@ -419,7 +419,10 @@ class BiliClient:
         role: str,
         max_lines: int,
     ) -> SubtitleTrack | None:
-        url = self.http.absolute(str(meta.get("url") or ""))
+        try:
+            url = self.http.absolute(str(meta.get("url") or ""))
+        except Exception:
+            return None
         if not url:
             return None
         try:

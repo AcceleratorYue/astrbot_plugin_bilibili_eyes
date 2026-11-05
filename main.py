@@ -1710,6 +1710,9 @@ class BilibiliEyesPlugin(Star):
         except bc.BiliError as exc:
             material.official_status = "failed"
             material.warnings.append(f"播放器信息不可用：{exc.reason}")
+        except Exception as exc:
+            material.official_status = "failed"
+            material.warnings.append(f"字幕/播放器信息异常：{type(exc).__name__}")
         await self._transcribe_audio_if_needed(material, event, job)
         if self._bool_opt("include_comments"):
             job.stage = "取评论"
