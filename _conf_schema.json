@@ -475,10 +475,22 @@
         "default": true
       },
       "subtitle_langs": {
-        "description": "字幕语言优先级",
+        "description": "主字幕语言优先级",
         "type": "string",
-        "hint": "逗号分隔，如 zh-Hans,zh,ai-zh,en",
+        "hint": "逗号分隔，如 zh-Hans,zh,ai-zh,en；指定主字幕",
         "default": "zh-Hans,zh,ai-zh,en"
+      },
+      "subtitle_dual_enabled": {
+        "description": "启用双语字幕",
+        "type": "bool",
+        "hint": "主字幕之外再抓一条不同语系的官方字幕；关闭则只取主字幕",
+        "default": true
+      },
+      "subtitle_secondary_langs": {
+        "description": "辅字幕语言优先级",
+        "type": "string",
+        "hint": "逗号分隔，如 en,en-US,en-GB；主字幕已是英语时自动改为找其他语系",
+        "default": "en,en-US,en-GB"
       },
       "include_description": {
         "description": "读取简介",

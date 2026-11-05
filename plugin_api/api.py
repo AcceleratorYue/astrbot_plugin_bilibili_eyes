@@ -175,6 +175,8 @@ class PluginWebApi:
                     or "unknown",
                     "official_count": transcript.get("official_count", 0),
                     "asr_count": transcript.get("asr_count", 0),
+                    "languages": transcript.get("languages", []),
+                    "track_count": transcript.get("track_count", 0),
                     "frames": int(meta.get("frames") or 0),
                     "core_chars": int(meta.get("core_chars") or 0),
                     "other_chars": int(meta.get("other_chars") or 0),
@@ -283,6 +285,15 @@ class PluginWebApi:
                     "asr_count": len((transcript or {}).get("asr") or []),
                     "official_status": (transcript or {}).get("official_status", "unknown"),
                     "asr_status": (transcript or {}).get("asr_status", "unknown"),
+                    "tracks": [
+                        {
+                            "lang": track.get("lang", ""),
+                            "lang_doc": track.get("lang_doc", ""),
+                            "role": track.get("role", ""),
+                            "line_count": len(track.get("lines") or []),
+                        }
+                        for track in (transcript or {}).get("tracks") or []
+                    ],
                 },
             )
         except Exception as exc:
@@ -306,6 +317,7 @@ class PluginWebApi:
             end=self._float(request.args.get("end", 0)),
             source=str(request.args.get("source", "both") or "both"),
             max_lines=self._int(request.args.get("limit", "20"), 20, 1, 50),
+            lang=str(request.args.get("lang", "") or ""),
         )
         return self._ok(text=et.format_result(doc, result), result=result)
 

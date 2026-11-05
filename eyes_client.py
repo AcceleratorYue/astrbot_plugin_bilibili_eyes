@@ -184,10 +184,26 @@ class LoginStatus:
 
 
 @dataclass
+class SubtitleTrack:
+    lang: str
+    lang_doc: str
+    lines: list[tuple[float, str]] = field(default_factory=list)
+    role: str = "primary"
+    is_ai: bool = False
+    bilingual: bool = False
+
+
+@dataclass
 class Material:
     video: VideoInfo
     subtitles: list[tuple[float, str]] = field(default_factory=list)
     subtitle_source: str = "official"
+    subtitle_lang: str = ""
+    subtitle_lang_doc: str = ""
+    subtitle_tracks: list[SubtitleTrack] = field(default_factory=list)
+    secondary_subtitles: list[tuple[float, str]] = field(default_factory=list)
+    secondary_lang: str = ""
+    secondary_lang_doc: str = ""
     official_status: str = "unknown"
     asr_subtitles: list[tuple[float, str]] = field(default_factory=list)
     asr_status: str = "unknown"
@@ -331,35 +347,180 @@ class BiliClient:
                     break
         return points
 
+    @staticmethod
+    def lang_family(lang: str) -> str:
+        value = str(lang or "").strip().lower().replace("_", "-")
+        if value.startswith("ai-"):
+            value = value[3:]
+        if not value:
+            return ""
+        if value.startswith("zh") or value in {"chinese", "zh-cn", "zh-hans"}:
+            return "zh"
+        if value.startswith("en") or value in {"english"}:
+            return "en"
+        if value.startswith("ja") or value in {"jp", "japanese"}:
+            return "ja"
+        if value.startswith("ko") or value in {"korean"}:
+            return "ko"
+        return value.split("-", 1)[0]
+
+    @staticmethod
+    def _subtitle_meta(item: dict) -> dict:
+        return {
+            "lan": str(item.get("lan") or "").strip(),
+            "lang_doc": str(item.get("lan_doc") or item.get("lan") or "").strip(),
+            "url": str(item.get("subtitle_url") or "").strip(),
+            "is_ai": bool(item.get("ai_type"))
+            or str(item.get("lan") or "").lower().startswith("ai-"),
+        }
+
+    @classmethod
+    def _ordered_subtitle_metas(
+        cls,
+        metas: list[dict],
+        langs: list[str],
+        *,
+        exclude_families: set[str] | None = None,
+        exclude_urls: set[str] | None = None,
+    ) -> list[dict]:
+        wanted = [str(item).strip().lower() for item in langs if str(item).strip()]
+        blocked_families = exclude_families or set()
+        blocked_urls = exclude_urls or set()
+
+        def score(meta: dict) -> tuple[int, int, int, int]:
+            lang = str(meta.get("lan") or "").lower()
+            family = cls.lang_family(lang)
+            exact = next(
+                (i for i, value in enumerate(wanted) if value == lang),
+                len(wanted),
+            )
+            family_match = next(
+                (
+                    i
+                    for i, value in enumerate(wanted)
+                    if cls.lang_family(value) == family
+                ),
+                len(wanted),
+            )
+            return (exact, family_match, 1 if meta.get("is_ai") else 0, metas.index(meta))
+
+        candidates = [
+            meta
+            for meta in metas
+            if meta.get("url")
+            and cls.lang_family(str(meta.get("lan") or "")) not in blocked_families
+            and meta.get("url") not in blocked_urls
+        ]
+        return sorted(candidates, key=score)
+
+    def _fetch_subtitle_track(
+        self,
+        meta: dict,
+        role: str,
+        max_lines: int,
+    ) -> SubtitleTrack | None:
+        url = self.http.absolute(str(meta.get("url") or ""))
+        if not url:
+            return None
+        try:
+            payload = self.http.get_json(url, timeout=self.timeout)
+        except Exception:
+            return None
+        lines: list[tuple[float, str]] = []
+        for item in (payload.get("body") or [])[:max_lines]:
+            content = str(item.get("content") or "").strip()
+            if not content:
+                continue
+            try:
+                stamp = float(item.get("from") or 0)
+            except (TypeError, ValueError):
+                stamp = 0.0
+            lines.append((stamp, content))
+        if not lines:
+            return None
+        sample = " ".join(content for _stamp, content in lines[:40])
+        cjk = len(re.findall(r"[一-鿿]", sample))
+        latin = len(re.findall(r"[A-Za-z]", sample))
+        return SubtitleTrack(
+            lang=str(meta.get("lan") or ""),
+            lang_doc=str(meta.get("lang_doc") or meta.get("lan") or ""),
+            lines=lines,
+            role=role,
+            is_ai=bool(meta.get("is_ai")),
+            bilingual=cjk >= 4 and latin >= 12,
+        )
+
+    def get_subtitle_tracks(
+        self,
+        player: dict,
+        langs: list[str],
+        secondary_langs: list[str] | None = None,
+        dual: bool = True,
+        max_lines: int = 2000,
+    ) -> list[SubtitleTrack]:
+        """选择主字幕轨，并在启用时补充一条不同语系的辅轨。"""
+
+        raw = (player.get("subtitle") or {}).get("subtitles") or []
+        metas: list[dict] = []
+        seen_urls: set[str] = set()
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            meta = self._subtitle_meta(item)
+            if not meta["url"] or meta["url"] in seen_urls:
+                continue
+            seen_urls.add(meta["url"])
+            metas.append(meta)
+        if not metas:
+            return []
+
+        primary: SubtitleTrack | None = None
+        primary_url = ""
+        for meta in self._ordered_subtitle_metas(metas, langs):
+            primary = self._fetch_subtitle_track(meta, "primary", max_lines)
+            if primary is not None:
+                primary_url = str(meta.get("url") or "")
+                break
+        if primary is None:
+            return []
+
+        tracks = [primary]
+        if not dual:
+            return tracks
+        secondary_candidates = self._ordered_subtitle_metas(
+            metas,
+            secondary_langs or [],
+            exclude_families={self.lang_family(primary.lang)},
+            exclude_urls={primary_url},
+        )
+        if not secondary_candidates:
+            secondary_candidates = self._ordered_subtitle_metas(
+                metas,
+                [],
+                exclude_families={self.lang_family(primary.lang)},
+                exclude_urls={primary_url},
+            )
+        for meta in secondary_candidates:
+            secondary = self._fetch_subtitle_track(meta, "secondary", max_lines)
+            if secondary is not None:
+                tracks.append(secondary)
+                break
+        return tracks
+
     def get_subtitles(
         self,
         player: dict,
         langs: list[str],
         max_lines: int = 2000,
     ) -> list[tuple[float, str]]:
-        subtitles = ((player.get("subtitle") or {}).get("subtitles") or [])
-        if not subtitles:
-            return []
-        chosen = None
-        for lang in langs:
-            for item in subtitles:
-                if str(item.get("lan") or "") == lang:
-                    chosen = item
-                    break
-            if chosen:
-                break
-        if chosen is None:
-            chosen = subtitles[0]
-        url = self.http.absolute(str(chosen.get("subtitle_url") or ""))
-        if not url:
-            return []
-        payload = self.http.get_json(url, timeout=self.timeout)
-        lines = []
-        for item in (payload.get("body") or [])[:max_lines]:
-            content = str(item.get("content") or "").strip()
-            if content:
-                lines.append((float(item.get("from") or 0), content))
-        return lines
+        tracks = self.get_subtitle_tracks(
+            player,
+            langs,
+            secondary_langs=[],
+            dual=False,
+            max_lines=max_lines,
+        )
+        return tracks[0].lines if tracks else []
 
     # -- 评论 -----------------------------------------------------------
 

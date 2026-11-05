@@ -177,6 +177,49 @@ def format_subtitles(lines: list[tuple[float, str]], max_chars: int = 6000) -> s
     return "\n".join(out)
 
 
+def format_bilingual_subtitles(
+    primary: list[tuple[float, str]],
+    secondary: list[tuple[float, str]],
+    primary_label: str = "",
+    secondary_label: str = "",
+) -> str:
+    """按时间把主/辅字幕交替输出，未对齐的辅轨保留在末尾。"""
+
+    if not secondary:
+        return format_subtitles(primary)
+    primary_label = primary_label or "主字幕"
+    secondary_label = secondary_label or "辅字幕"
+    unused = set(range(len(secondary)))
+    out: list[str] = []
+    for stamp, content in primary:
+        chunk = f"[{_fmt_time(stamp)}] {primary_label}：{normalize_quotes(content)}"
+        candidates = [
+            index
+            for index in unused
+            if abs(float(secondary[index][0]) - float(stamp)) <= 1.5
+        ]
+        if candidates:
+            match = min(
+                candidates,
+                key=lambda index: abs(float(secondary[index][0]) - float(stamp)),
+            )
+            unused.discard(match)
+            chunk += (
+                f"\n      {secondary_label}："
+                f"{normalize_quotes(secondary[match][1])}"
+            )
+        out.append(chunk)
+    if unused:
+        out.append(f"（未对齐的{secondary_label}）")
+        for index in sorted(unused, key=lambda item: float(secondary[item][0])):
+            stamp, content = secondary[index]
+            out.append(
+                f"[{_fmt_time(stamp)}] {secondary_label}："
+                f"{normalize_quotes(content)}"
+            )
+    return "\n".join(out)
+
+
 def format_comments(comments: list[Any], max_chars: int = 2000) -> str:
     if not comments:
         return ""
@@ -228,14 +271,47 @@ def build_material_prompt(
     ]
     if ignored_links > 0:
         parts.append(f"注意：用户消息里还有 {ignored_links} 个额外链接，本次只看第一个。")
-    subtitle_text = format_subtitles(material.subtitles)
+    secondary = getattr(material, "secondary_subtitles", []) or []
+    primary_label = getattr(material, "subtitle_lang_doc", "") or "主字幕"
+    secondary_label = getattr(material, "secondary_lang_doc", "") or "辅字幕"
+    subtitle_text = (
+        format_bilingual_subtitles(
+            material.subtitles,
+            secondary,
+            primary_label=primary_label,
+            secondary_label=secondary_label,
+        )
+        if secondary
+        else format_subtitles(material.subtitles)
+    )
     if subtitle_text:
-        parts.append("字幕（已按标点/停顿合并碎片，带时间戳）：\n" + subtitle_text)
+        if secondary:
+            parts.append(
+                f"双语字幕（主：{primary_label}；辅：{secondary_label}；"
+                "时间戳用于对齐，引用时以主语言为准）：\n" + subtitle_text
+            )
+            parts.append(
+                "双语字幕使用规则：主语言用于叙述；辅语言用于核对原话、术语和双关；"
+                "两者冲突时标注来源，不要自行拼出原文没有的句子。"
+            )
+        else:
+            label = (
+                f"（{primary_label}）"
+                if primary_label and primary_label != "主字幕"
+                else ""
+            )
+            parts.append(
+                f"字幕{label}（已按标点/停顿合并碎片，带时间戳）：\n"
+                + subtitle_text
+            )
         highlights = subtitle_highlights(material.subtitles, limit=5)
         if highlights:
             parts.append(
                 "字幕高信息段（优先看这些时间点）：\n"
-                + "\n".join(f"- {_fmt_time(ts)} {normalize_quotes(text)}" for ts, text in highlights)
+                + "\n".join(
+                    f"- {_fmt_time(ts)} {normalize_quotes(text)}"
+                    for ts, text in highlights
+                )
             )
     else:
         parts.append("字幕：没有可用字幕（不要编造台词，只能依据画面与简介）。")

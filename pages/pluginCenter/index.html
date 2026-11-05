@@ -110,6 +110,16 @@
                 <option value="asr">ASR</option>
               </select>
             </label>
+            <label class="select">
+              <span>语言</span>
+              <select id="transcriptLang">
+                <option value="">全部字幕轨</option>
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+              </select>
+            </label>
             <label class="time"><span>起</span><input id="transcriptStart" type="number" min="0" step="1" placeholder="秒" /></label>
             <label class="time"><span>止</span><input id="transcriptEnd" type="number" min="0" step="1" placeholder="秒" /></label>
             <button id="transcriptSearchBtn" type="button">查询</button>
@@ -177,6 +187,9 @@
               <label class="search"><span>关键词</span><input id="detailRawQuery" type="search" placeholder="关键词…" /></label>
               <label class="select"><span>来源</span>
                 <select id="detailRawSource"><option value="both">官方 + ASR</option><option value="official">官方</option><option value="asr">ASR</option></select>
+              </label>
+              <label class="select"><span>语言</span>
+                <select id="detailRawLang"><option value="">全部字幕轨</option><option value="zh">中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option></select>
               </label>
               <button id="detailRawSearch" type="button">查询原文</button>
             </div>

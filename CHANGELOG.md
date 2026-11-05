@@ -2,7 +2,18 @@
 
 ## 0.12.0 (2026-11-04)
 
-实现 WebUI 管理页。
+实现 WebUI 管理页；补齐双语字幕双轨。
+
+### 双语字幕
+
+- 新增 `SubtitleTrack` 与 `Material.subtitle_tracks/secondary_subtitles`；
+- 主字幕仍按 `subtitle_langs` 选；新增 `subtitle_dual_enabled`、`subtitle_secondary_langs`；
+- 按语系去重，主机已英语时自动找其他语系；
+- 双语提示词按时间交替展示主/辅字幕；
+- `TranscriptStore` v2 保存 `tracks`，兼容旧 JSON；
+- `bilibili_transcript` 新增 `lang` 过滤；WebUI 原文检索同步。
+
+### WebUI
 
 - 新增 `pages/pluginCenter`：概览、视频记录、视频详情、原文检索、缓存管理、诊断、配置摘要；
 - 新增 `plugin_api`：`/overview`、`/videos`、`/video`、`/transcript`、`/cache-summary`、`/cache-cleanup`、`/config`、`/diagnostics`；

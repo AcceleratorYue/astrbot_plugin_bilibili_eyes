@@ -93,6 +93,9 @@
 | `audio_transcription_chunk_seconds` | 300 | 长音频分块大小，避免单次超过 Provider 限制 |
 | `audio_transcription_max_mb` | 20 | 抽取音频的大小上限 |
 | `audio_transcription_timeout` | 120 | STT 转录超时（秒） |
+| `subtitle_langs` | zh-Hans,zh,ai-zh,en | 主字幕语言优先级；指定主字幕 |
+| `subtitle_dual_enabled` | 开 | 主字幕之外再抓一条不同语系的官方字幕 |
+| `subtitle_secondary_langs` | en,en-US,en-GB | 辅字幕语言优先级；主字幕已是英语时自动改找其他语系 |
 | `vision_provider_id` | 空 | 空 = 跟随主模型；主模型无视觉则不截帧（文本笔记）。也可指定支持图片的 provider |
 | `nl_trigger_enabled` | 开 | 视频自然语言触发（UP 主只用 `/看主页`） |
 | `user_daily_quota` | 20 | 每用户每日次数；0=不限制 |
@@ -195,12 +198,14 @@ bilibili_transcript(
     start="40",
     end="55",
     source="both",
+    lang="",
     max_lines="20"
 )
 ```
 
 - 支持关键词、时间范围；
 - `source=official/asr/both`；
+- `lang=zh/en/ja/ko` 过滤字幕轨，空 = 全部；
 - 官方字幕和 ASR 分开标注；
 - ASR 时间戳标“约”；
 - 单次最多约 20 行，超限提示缩小范围；
@@ -342,6 +347,36 @@ WebUI 通过 AstrBot 插件页面桥接，不启动独立服务、不占端口�
 可概括，也可只聊一个细节、画面或感受；表达简洁口语化，避免汇报腔、客服腔和逐条总结。
 情绪随内容自然变化，不强行积极或深沉；不主动报时长、不编造细节。
 用户没有明确要求时，不主动展开完整总结；只有问“讲了什么/总结一下”时再概括。**
+
+## 双语字幕
+
+官方字幕有多条语言轨时，默认抓取**主字幕 + 一条互补语系的辅字幕**。
+
+选择规则：
+
+1. `subtitle_langs` 按顺序选主字幕；
+2. `subtitle_dual_enabled=true` 时，按 `subtitle_secondary_langs` 选一条不同语系的辅字幕；
+3. 主字幕已经是英语时，辅字幕自动找中文/日文/韩文等其他语系；
+4. 同一语系不重复抓取，例如有 `zh-Hans` 时不会再选 `ai-zh`；
+5. 只有一条中英混合轨时，保留原样并标记为双语。
+
+提示词会按时间把主/辅字幕交替展示，并明确：
+
+- 主语言用于叙述；
+- 辅语言用于核对原话、术语和双关；
+- 两者冲突时标注来源，不自行拼出原文没有的句子。
+
+关闭 `subtitle_dual_enabled` 即回到只抓主字幕的旧行为。
+
+### 原文检索语言过滤
+
+`bilibili_transcript` 新增 `lang` 参数：
+
+```text
+bilibili_transcript(query="wallet", lang="en")
+```
+
+支持 `zh / en / ja / ko`；不填则搜索全部字幕轨。WebUI 原文检索页也有语言下拉。
 
 ## 音频转录（ASR）
 

@@ -214,7 +214,8 @@ async function openDetail(bvid, page) {
     state.detail = data;
     const title = data.video?.title || "（无标题）";
     $("detailTitle").textContent = title;
-    $("detailMeta").textContent = `${bvid} · P${page} · ${modeLabel(data.meta?.mode)} · ${fmtTime(data.video?.created)}`;
+    const tracks = (data.transcript?.tracks || []).map((track) => track.lang_doc || track.lang).filter(Boolean);
+    $("detailMeta").textContent = `${bvid} · P${page} · ${modeLabel(data.meta?.mode)} · ${fmtTime(data.video?.created)}${tracks.length ? ` · 字幕 ${tracks.join(" / ")}` : ""}`;
     $("detailCore").textContent = data.note?.core || "暂无核心笔记";
     $("detailOther").textContent = data.note?.other || "暂无其他客观内容";
     $("detailPlan").textContent = data.meta?.frame_plan
@@ -233,12 +234,13 @@ function selectDetailTab(tab) {
   Object.entries(map).forEach(([key, id]) => $(id).hidden = key !== tab);
 }
 
-async function searchTranscript(bvid, page, query, source, start, end) {
+async function searchTranscript(bvid, page, query, source, start, end, lang = "") {
   return apiGet("transcript", {
     bvid,
     page,
     query,
     source,
+    lang,
     start: start || 0,
     end: end || 0,
     limit: 20,
@@ -351,7 +353,7 @@ function bindEvents() {
     if (!selected) return;
     const [bvid, page] = selected.split("|");
     try {
-      const data = await searchTranscript(bvid, Number(page), $("transcriptQuery").value.trim(), $("transcriptSource").value, $("transcriptStart").value, $("transcriptEnd").value);
+      const data = await searchTranscript(bvid, Number(page), $("transcriptQuery").value.trim(), $("transcriptSource").value, $("transcriptStart").value, $("transcriptEnd").value, $("transcriptLang").value);
       $("transcriptResult").textContent = data.text || "没有结果";
     } catch (error) {
       $("transcriptResult").textContent = `查询失败：${error.message}`;
@@ -362,7 +364,7 @@ function bindEvents() {
     const bvid = state.detail.video.bvid;
     const page = state.detail.video.page;
     try {
-      const data = await searchTranscript(bvid, page, $("detailRawQuery").value.trim(), $("detailRawSource").value, 0, 0);
+      const data = await searchTranscript(bvid, page, $("detailRawQuery").value.trim(), $("detailRawSource").value, 0, 0, $("detailRawLang").value);
       $("detailRawResult").textContent = data.text || "没有结果";
     } catch (error) {
       $("detailRawResult").textContent = `查询失败：${error.message}`;

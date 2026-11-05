@@ -120,6 +120,8 @@ DEFAULT_OPTIONS: dict = {
     "audio_transcription_timeout": 120,
     "include_subtitle": True,
     "subtitle_langs": "zh-Hans,zh,ai-zh,en",
+    "subtitle_dual_enabled": True,
+    "subtitle_secondary_langs": "en,en-US,en-GB",
     "include_description": True,
     "include_comments": True,
     "comment_limit": 12,
@@ -258,6 +260,8 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
     "content": (
         "include_subtitle",
         "subtitle_langs",
+        "subtitle_dual_enabled",
+        "subtitle_secondary_langs",
         "include_description",
         "include_comments",
         "comment_limit",
@@ -1161,6 +1165,7 @@ class BilibiliEyesPlugin(Star):
         end: str = "0",
         source: str = "both",
         max_lines: str = "20",
+        lang: str = "",
         bvid: str = "",
     ):
         """查询最近看过的 B站视频的官方字幕/ASR 原文，不经过子代理。
@@ -1171,6 +1176,7 @@ class BilibiliEyesPlugin(Star):
             end(string): 结束秒数；0 表示到结尾
             source(string): official / asr / both
             max_lines(string): 最多返回多少行，1~50
+            lang(string): 可选语言过滤，如 zh / en / ja / ko；空 = 全部字幕轨
             bvid(string): 可选；不填使用当前会话最近看过的视频
         """
 
@@ -1203,6 +1209,7 @@ class BilibiliEyesPlugin(Star):
             end=end_value,
             source=source,
             max_lines=line_value,
+            lang=lang,
         )
         return text_result(et.format_result(doc, result))
 
@@ -1638,6 +1645,13 @@ class BilibiliEyesPlugin(Star):
             cached = self._cache.get(
                 video.bvid, video.page, self._cache_variant()
             )
+            if cached and self._bool_opt("subtitle_dual_enabled"):
+                # 旧笔记缓存没有双语字幕标记；忽略一次，重新生成。
+                record = self._cache.get_record(video.bvid, video.page)
+                if not record or not (record.get("meta") or {}).get(
+                    "subtitle_dual_checked"
+                ):
+                    cached = None
             if cached:
                 material.cached_digest = cached
                 job.stage = "命中缓存"
@@ -1657,15 +1671,37 @@ class BilibiliEyesPlugin(Star):
                         pass
                 return material
         langs = [item.strip() for item in str(self._opt("subtitle_langs") or "").split(",") if item.strip()]
+        secondary_langs = [
+            item.strip()
+            for item in str(self._opt("subtitle_secondary_langs") or "").split(",")
+            if item.strip()
+        ]
+        dual_subtitles = self._bool_opt("subtitle_dual_enabled")
         try:
             job.stage = "取播放器信息"
             player = await self._run(client.get_player, video.bvid, video.cid)
             material.view_points = client.get_view_point_times(player)
             if self._bool_opt("include_subtitle"):
-                raw_subtitles = await self._run(
-                    client.get_subtitles, player, langs
+                tracks = await self._run(
+                    client.get_subtitle_tracks,
+                    player,
+                    langs,
+                    secondary_langs,
+                    dual_subtitles,
                 )
-                material.subtitles = ec.merge_subtitles(raw_subtitles)
+                if tracks:
+                    primary = tracks[0]
+                    primary.lines = ec.merge_subtitles(primary.lines)
+                    material.subtitles = primary.lines
+                    material.subtitle_lang = primary.lang
+                    material.subtitle_lang_doc = primary.lang_doc
+                    material.subtitle_tracks = tracks
+                    if len(tracks) > 1:
+                        secondary = tracks[1]
+                        secondary.lines = ec.merge_subtitles(secondary.lines)
+                        material.secondary_subtitles = secondary.lines
+                        material.secondary_lang = secondary.lang
+                        material.secondary_lang_doc = secondary.lang_doc
                 material.official_status = (
                     "available" if material.subtitles else "absent"
                 )
@@ -1805,6 +1841,12 @@ class BilibiliEyesPlugin(Star):
                         "asr_status": material.asr_status,
                         "frame_plan": material.frame_plan,
                         "frames": len(material.frame_layout),
+                        "subtitle_langs": [
+                            track.lang_doc or track.lang
+                            for track in material.subtitle_tracks
+                        ],
+                        "subtitle_dual": len(material.subtitle_tracks) > 1,
+                        "subtitle_dual_checked": True,
                         "core_chars": len(sa.split_note_sections(digest)[0]),
                         "other_chars": len(sa.split_note_sections(digest)[1]),
                     },
@@ -2365,10 +2407,12 @@ class BilibiliEyesPlugin(Star):
             video = material.video
             official = material.subtitles
             asr = material.asr_subtitles
+            tracks = material.subtitle_tracks
             official_status = material.official_status
             if material.subtitle_source == "asr":
                 asr = asr or official
                 official = []
+                tracks = []
                 official_status = "absent"
             self._transcript_store().save(
                 video.bvid,
@@ -2380,6 +2424,7 @@ class BilibiliEyesPlugin(Star):
                 official_status,
                 material.asr_status,
                 material.asr_fingerprint,
+                tracks=tracks,
             )
         except Exception as exc:
             logger.warning(f"{LOG} 原文缓存写入失败：{exc}")

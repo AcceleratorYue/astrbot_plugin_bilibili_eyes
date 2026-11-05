@@ -979,6 +979,117 @@ def test_video_mode() -> None:
     print("✅ 三模式：auto/legacy/enhanced/extreme 选择")
 
 
+def test_bilingual_subtitle_tracks() -> None:
+    class FakeHTTP:
+        def __init__(self):
+            self.body = {
+                "zh": {"body": [{"from": 0, "content": "第一句中文"}, {"from": 1.2, "content": "第二句中文"}]},
+                "en": {"body": [{"from": 0, "content": "First English line"}, {"from": 1.2, "content": "Second English line"}]},
+                "ai": {"body": [{"from": 0, "content": "AI 中文"}]},
+            }
+
+        def absolute(self, url):
+            return url
+
+        def get_json(self, url, timeout=0):
+            return self.body[url]
+
+    client = bc.BiliClient(interval=0)
+    client.http = FakeHTTP()
+    player = {
+        "subtitle": {
+            "subtitles": [
+                {"lan": "zh-Hans", "lan_doc": "中文（简体）", "subtitle_url": "zh"},
+                {"lan": "ai-zh", "lan_doc": "中文（AI）", "subtitle_url": "ai", "ai_type": 1},
+                {"lan": "en-US", "lan_doc": "English", "subtitle_url": "en"},
+            ]
+        }
+    }
+    tracks = client.get_subtitle_tracks(
+        player, ["zh-Hans", "zh", "ai-zh", "en"], ["en", "en-US"]
+    )
+    assert [track.lang for track in tracks] == ["zh-Hans", "en-US"]
+    assert tracks[0].role == "primary" and tracks[1].role == "secondary"
+    assert tracks[0].lines[0][1] == "第一句中文"
+    assert tracks[1].lines[0][1] == "First English line"
+
+    only_primary = client.get_subtitle_tracks(
+        player, ["zh-Hans"], [], dual=False
+    )
+    assert len(only_primary) == 1
+
+    english_primary = client.get_subtitle_tracks(
+        player, ["en-US"], ["en"], dual=True
+    )
+    assert [track.lang for track in english_primary] == ["en-US", "zh-Hans"]
+
+    single = bc.BiliClient(interval=0)
+    single.http = FakeHTTP()
+    one_track_player = {
+        "subtitle": {
+            "subtitles": [
+                {
+                    "lan": "en-US",
+                    "lan_doc": "English",
+                    "subtitle_url": "en",
+                }
+            ]
+        }
+    }
+    single_track = single.get_subtitle_tracks(one_track_player, ["en"], [], dual=True)
+    assert len(single_track) == 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        store = et.TranscriptStore(Path(tmp), ttl_hours=1, max_entries=5)
+        assert store.save(
+            "BV1dual",
+            1,
+            "双语测试",
+            30,
+            tracks[0].lines,
+            [],
+            "available",
+            "absent",
+            tracks=[
+                {
+                    "lang": "zh-Hans",
+                    "lang_doc": "中文（简体）",
+                    "role": "primary",
+                    "lines": tracks[0].lines,
+                },
+                {
+                    "lang": "en-US",
+                    "lang_doc": "English",
+                    "role": "secondary",
+                    "lines": tracks[1].lines,
+                },
+            ],
+        )
+        loaded = store.load("BV1dual", 1)
+        assert loaded and len(loaded["tracks"]) == 2
+        assert loaded["official_secondary"][0][1] == "First English line"
+        result = et.search(loaded, query="English line", lang="en")
+        text = et.format_result(loaded, result)
+        assert "官方辅轨·English" in text and "First English line" in text
+
+    video = bc.VideoInfo(
+        bvid="BV1dual", aid=1, cid=2, page=1, page_count=1,
+        title="双语测试", up_name="UP", up_uid=1, duration=30, desc="",
+    )
+    material = bc.Material(video=video)
+    material.subtitles = tracks[0].lines
+    material.secondary_subtitles = tracks[1].lines
+    material.subtitle_lang = tracks[0].lang
+    material.subtitle_lang_doc = tracks[0].lang_doc
+    material.secondary_lang = tracks[1].lang
+    material.secondary_lang_doc = tracks[1].lang_doc
+    material.subtitle_tracks = tracks
+    prompt = sa.build_material_prompt(material)
+    assert "双语字幕" in prompt and "中文（简体）" in prompt and "English" in prompt
+    assert "First English line" in prompt
+    print("✅ 双语字幕：主辅轨选择 / 不同语系 / 原文检索 / 提示词")
+
+
 def test_transcript_direct_read() -> None:
     import main as plugin_main
 
@@ -1243,6 +1354,7 @@ def main() -> int:
     test_extreme_planner()
     test_compression_and_candidate_times()
     test_video_mode()
+    test_bilingual_subtitle_tracks()
     test_transcript_direct_read()
     test_config_grouping()
     test_web_api_registration_and_cache_listing()

@@ -103,7 +103,9 @@ B 站内容「感知器官」插件：**子代理（眼睛）在隔离上下文�
 | 配置 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `include_subtitle` | bool | true | 字幕 |
-| `subtitle_langs` | string | `zh-Hans,zh,ai-zh,en` | 语言优先级 |
+| `subtitle_langs` | string | `zh-Hans,zh,ai-zh,en` | 主字幕语言优先级 |
+| `subtitle_dual_enabled` | bool | true | 主字幕+不同语系辅字幕 |
+| `subtitle_secondary_langs` | string | `en,en-US,en-GB` | 辅字幕语言优先级 |
 | `include_description` | bool | true | 简介 |
 | `include_comments` | bool | true | 评论 |
 | `comment_limit` | int | 12 | 热评数 |
