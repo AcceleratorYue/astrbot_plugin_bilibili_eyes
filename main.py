@@ -362,7 +362,7 @@ class BilibiliEyesPlugin(Star):
         self._transcripts = None
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.12.0 已加载")
+        logger.info(f"{LOG} 插件 v0.12.1 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()

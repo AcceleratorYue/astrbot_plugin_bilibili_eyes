@@ -205,7 +205,7 @@ class PluginWebApi:
             last = videos[0] if videos else None
             return self._ok(
                 overview={
-                    "version": "0.12.0",
+                    "version": "0.12.1",
                     "enabled": self.plugin._bool_opt("enabled"),
                     "video_mode": self.plugin._video_mode(),
                     "last_video": last,

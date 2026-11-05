@@ -1,17 +1,40 @@
 # Changelog
 
-## 0.12.0 (2026-11-04)
+## 0.12.1 (2026-11-05)
 
-实现 WebUI 管理页；补齐双语字幕双轨。
+修复 WebUI 上线后暴露的问题，补齐双语字幕与极致取帧兜底。
+
+### WebUI 修复
+
+- 兼容新版 AstrBot 的 `AstrBotPluginView`，同时保留 `AstrBotPluginPage` 回退；
+- 页面脚本改为 `defer`，等待 AstrBot 在 `</body>` 注入桥接后再执行，修复 `Cannot read properties of undefined (reading 'ready')`；
+- 修复 `.callout { display:flex }` 覆盖 `[hidden]` 导致的常驻“加载失败”假报错；
+- 修复安装目录 `eyes_cache.py` / `eyes_transcript.py` 旧版缺少 `list_records()`，导致视频列表和计数为 0；
+- 修复配置摘要读取 `CONFIG_GROUP_KEYS` 位置错误导致内容为空；
+- 缓存清理不再依赖被 iframe 拦截的 `window.confirm()`，改为页面内二次确认；
+- 加载成功后清除旧错误条；
+- 版本号显示改为动态读取，静态兜底同步到 0.12.1。
 
 ### 双语字幕
 
 - 新增 `SubtitleTrack` 与 `Material.subtitle_tracks/secondary_subtitles`；
 - 主字幕仍按 `subtitle_langs` 选；新增 `subtitle_dual_enabled`、`subtitle_secondary_langs`；
-- 按语系去重，主机已英语时自动找其他语系；
+- 按语系去重，主字幕已是英语时自动找其他语系；
 - 双语提示词按时间交替展示主/辅字幕；
 - `TranscriptStore` v2 保存 `tracks`，兼容旧 JSON；
-- `bilibili_transcript` 新增 `lang` 过滤；WebUI 原文检索同步。
+- `bilibili_transcript` 新增 `lang` 过滤；WebUI 原文检索同步；
+- 旧笔记缓存缺少双语标记时自动忽略一次，避免继续复用单轨中文笔记。
+
+### 极致取帧修复
+
+- 修复 `_fill_keyframes()` 补帧分母随列表增长的问题，避免生成超过视频时长的 keyframe；
+- 切点过少时自动补均匀场景边界，避免单场景 4 帧上限吃掉目标帧数；
+- 场景内改为围绕均匀目标时间选择最近 keyframe，避免长场景只取开头几帧；
+- 实测 182 秒无字幕视频从 `8/15` 帧提升到 `15/15` 帧，覆盖 8s~174s。
+
+## 0.12.0 (2026-11-04)
+
+实现 WebUI 管理页。
 
 ### WebUI
 
