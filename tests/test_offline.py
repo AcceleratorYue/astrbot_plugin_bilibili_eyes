@@ -22,6 +22,7 @@ import eyes_client as bc  # noqa: E402
 import eyes_enhanced as ee  # noqa: E402
 import eyes_extreme as ex  # noqa: E402
 import eyes_ocr as eo  # noqa: E402
+import eyes_auth as ea  # noqa: E402
 import eyes_subagent as sa  # noqa: E402
 import eyes_transcript as et  # noqa: E402
 
@@ -1256,6 +1257,32 @@ def test_config_grouping() -> None:
     print("✅ 配置分组：分组优先 / 扁平回退 / 自动迁移")
 
 
+def test_auth_and_settings_spec() -> None:
+    from plugin_api import settings_spec
+
+    with tempfile.TemporaryDirectory() as tmp:
+        manager = ea.CredentialManager(Path(tmp))
+        assert not manager.has_valid_credential()
+        manager.save({"sessdata": "abc123", "bili_jct": "j", "refresh_token": "r"})
+        assert manager.get_sessdata() == "abc123"
+        assert manager.summary()["present"] is True
+        assert manager.summary()["sessdata_tail"].endswith("c123")
+        manager.clear()
+        assert not manager.has_valid_credential()
+
+    assert len(settings_spec.GROUPS) >= 10
+    assert "sessdata" in settings_spec.FIELDS
+    clean, errors = settings_spec.validate_values(
+        {"video_mode": "extreme", "ocr_subtitle_enabled": False, "group_whitelist": "a,b"}
+    )
+    assert not errors and clean["video_mode"] == "extreme"
+    assert clean["ocr_subtitle_enabled"] is False
+    assert clean["group_whitelist"] == ["a", "b"]
+    _, errors = settings_spec.validate_values({"not_a_field": 1})
+    assert errors
+    print("✅ WebUI：扫码凭据管理 / 设置字段规格")
+
+
 def test_web_api_registration_and_cache_listing() -> None:
     from plugin_api import PluginWebApi
 
@@ -1272,6 +1299,9 @@ def test_web_api_registration_and_cache_listing() -> None:
     routes = [item[0] for item in plugin.context.registered_web_apis]
     assert "/astrbot_plugin_bilibili_eyes/overview" in routes
     assert "/astrbot_plugin_bilibili_eyes/transcript" in routes
+    assert "/astrbot_plugin_bilibili_eyes/status" in routes
+    assert "/astrbot_plugin_bilibili_eyes/settings" in routes
+    assert "/astrbot_plugin_bilibili_eyes/login/qr" in routes
     service.unregister()
     assert not plugin.context.registered_web_apis
 
@@ -1360,7 +1390,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.12.2" in meta
+    assert "version: 0.13.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1421,6 +1451,7 @@ def main() -> int:
     test_transcript_direct_read()
     test_config_grouping()
     test_web_api_registration_and_cache_listing()
+    test_auth_and_settings_spec()
     test_schema()
     print("\n全部离线测试通过")
     return 0

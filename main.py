@@ -23,12 +23,12 @@ if str(PLUGIN_DIR) not in sys.path:
 
 # AstrBot 热重载通常只重新 import main，子模块会留在 sys.modules 里，
 # 导致代码更新后仍跑到旧的 eyes_client/eyes_subagent。这里先清掉再导入。
-for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean", "eyes_enhanced", "eyes_extreme", "eyes_transcript", "plugin_api", "plugin_api.api"):
+for _module_name in ("eyes_wbi", "eyes_client", "eyes_subagent", "eyes_cache", "eyes_card", "eyes_audio", "eyes_clean", "eyes_enhanced", "eyes_extreme", "eyes_transcript", "eyes_auth", "plugin_api", "plugin_api.api", "plugin_api.settings_spec"):
     sys.modules.pop(_module_name, None)
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.message_components import Plain
+from astrbot.api.message_components import Image, Plain
 from astrbot.api.star import Context, Star
 from astrbot.core.message.message_event_result import MessageChain
 
@@ -43,6 +43,7 @@ from eyes_cache import MaterialStore, NoteCache
 from eyes_card import extract_bilibili_card_url
 from plugin_api import PluginWebApi
 import eyes_ocr as ocr
+import eyes_auth as auth
 
 PLUGIN_NAME = "astrbot_plugin_bilibili_eyes"
 LOG = "[B站之眼]"
@@ -379,9 +380,14 @@ class BilibiliEyesPlugin(Star):
         self._session_materials: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._transcripts = None
+        self._credentials = auth.CredentialManager(self._data_dir())
+        self._qr_login = auth.BiliQrLoginService(
+            timeout=max(5, self._int_opt("request_timeout", 20))
+        )
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
-        logger.info(f"{LOG} 插件 v0.12.2 已加载")
+        self._account_cache: tuple[float, dict] | None = None
+        logger.info(f"{LOG} 插件 v0.13.0 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -520,8 +526,12 @@ class BilibiliEyesPlugin(Star):
             self._cache = None
 
     def _client(self) -> bc.BiliClient:
+        # 扫码凭据优先；退出登录后自动回退到配置里的 sessdata。
+        sessdata = self._credentials.get_sessdata() or str(
+            self._opt("sessdata") or ""
+        ).strip()
         return bc.BiliClient(
-            sessdata=str(self._opt("sessdata") or "").strip(),
+            sessdata=sessdata,
             user_agent=str(self._opt("user_agent") or "").strip(),
             timeout=self._int_opt("request_timeout", 20),
             interval=float(self._opt("request_interval", 0.8) or 0.8),
@@ -786,7 +796,8 @@ class BilibiliEyesPlugin(Star):
             return
         umo = event.unified_msg_origin
         if (
-            not str(self._opt("sessdata") or "").strip()
+            not self._credentials.get_sessdata()
+            and not str(self._opt("sessdata") or "").strip()
             and umo not in self._sessdata_warned
         ):
             self._sessdata_warned.add(umo)
@@ -993,19 +1004,147 @@ class BilibiliEyesPlugin(Star):
             logger.warning(f"{LOG} 直接回复失败：{exc}")
         event.stop_event()
 
+    async def _bili_account(self, force: bool = False) -> dict | None:
+        now = time.time()
+        if not force and self._account_cache and now - self._account_cache[0] < 600:
+            return self._account_cache[1]
+        sessdata = self._credentials.get_sessdata() or str(
+            self._opt("sessdata") or ""
+        ).strip()
+        if not sessdata:
+            return None
+        client = self._client()
+        try:
+            payload = await self._run(
+                client.http.get_json,
+                "https://api.bilibili.com/x/web-interface/nav",
+                10,
+            )
+        except Exception as exc:
+            logger.warning(f"{LOG} 读取B站账号失败：{exc}")
+            return None
+        data = payload.get("data") or {}
+        if not data.get("isLogin"):
+            return None
+        account = {
+            "uname": str(data.get("uname") or ""),
+            "mid": str(data.get("mid") or ""),
+            "level": int((data.get("level_info") or {}).get("current_level") or 0),
+            "vip": int(data.get("vipStatus") or 0) == 1,
+            "coins": int(data.get("money") or 0),
+            "avatar": "",
+        }
+        face = str(data.get("face") or "")
+        if face.startswith(("http://", "https://")):
+            try:
+                raw = await self._run(client.http.request, face, 10)
+                if raw and len(raw) <= 512 * 1024:
+                    if raw[:2] == bytes.fromhex("ffd8"):
+                        mime = "image/jpeg"
+                    elif raw[:8] == bytes.fromhex("89504e470d0a1a0a"):
+                        mime = "image/png"
+                    elif raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+                        mime = "image/webp"
+                    else:
+                        mime = ""
+                    if mime:
+                        account["avatar"] = (
+                            f"data:{mime};base64,"
+                            + base64.b64encode(raw).decode("ascii")
+                        )
+            except Exception:
+                pass
+        self._account_cache = (now, account)
+        return account
+
+    def _login_summary(self) -> dict:
+        qr_sess = self._credentials.get_sessdata()
+        cfg_sess = str(self._opt("sessdata") or "").strip()
+        source = "qr" if qr_sess else ("config" if cfg_sess else "guest")
+        sess = qr_sess or cfg_sess
+        return {
+            "logged_in": bool(sess),
+            "source": source,
+            "sessdata_tail": f"…{sess[-4:]}" if len(sess) > 4 else "",
+        }
+
+    @filter.command("bili登录", alias=["bili_login"])
+    async def cmd_bili_login(self, event: AstrMessageEvent):
+        if not self._is_admin_event(event):
+            await self._reply_now(event, "只有管理员可以操作扫码登录。")
+            return
+        try:
+            session = await self._run(
+                self._qr_login.request_qrcode,
+                self._data_dir() / "qrcode",
+            )
+        except Exception as exc:
+            await self._reply_now(event, f"申请登录二维码失败：{exc}")
+            return
+        chain: list = [
+            Plain(
+                "请使用【哔哩哔哩手机客户端】扫描下方二维码登录（180秒内有效）："
+                + chr(10)
+            )
+        ]
+        if session.qr_image_path:
+            chain.append(Image.fromFileSystem(str(session.qr_image_path)))
+        else:
+            chain.append(Plain("（本地未安装 qrcode，无法渲染二维码图片）" + chr(10)))
+        chain.append(Plain(chr(10) + "若图片无法显示，请在手机浏览器打开：" + chr(10) + session.url))
+        await event.send(MessageChain(chain))
+        asyncio.create_task(self._poll_bili_login(event, session.qrcode_key))
+
+    async def _poll_bili_login(self, event: AstrMessageEvent, qrcode_key: str):
+        for _ in range(60):
+            await asyncio.sleep(3)
+            try:
+                result = await self._run(self._qr_login.poll_status, qrcode_key)
+                if result.code == 0 and result.credentials:
+                    self._credentials.save(result.credentials)
+                    self._account_cache = None
+                    account = await self._bili_account(force=True)
+                    name = (account or {}).get("uname") or "B站用户"
+                    uid = (account or {}).get("mid") or ""
+                    await event.send(
+                        MessageChain(
+                            [Plain(f"🎉 扫码登录成功，已绑定 {name} (UID: {uid})")]
+                        )
+                    )
+                    return
+                if result.code == 86038:
+                    await event.send(
+                        MessageChain([Plain("二维码已过期，请重新发送 /bili登录。")])
+                    )
+                    return
+            except Exception as exc:
+                logger.warning(f"{LOG} 扫码轮询失败：{exc}")
+                return
+
+    @filter.command("bili注销", alias=["bili_logout"])
+    async def cmd_bili_logout(self, event: AstrMessageEvent):
+        if not self._is_admin_event(event):
+            await self._reply_now(event, "只有管理员可以操作注销。")
+            return
+        self._credentials.clear()
+        self._account_cache = None
+        await self._reply_now(event, "已清除扫码凭据，回退到配置 SESSDATA 或游客模式。")
+
     @filter.command("bili状态", alias=["bili_status"])
     async def cmd_bili_status(self, event: AstrMessageEvent):
         started = time.monotonic()
         if not self._bool_opt("enabled"):
             return
         logger.info(f"{LOG} bili状态 开始：umo={event.unified_msg_origin}")
-        sessdata = str(self._opt("sessdata") or "").strip()
+        sessdata = self._credentials.get_sessdata() or str(
+            self._opt("sessdata") or ""
+        ).strip()
         if not sessdata:
             await self._reply_now(
                 event,
-                "未配置 SESSDATA：当前是游客模式（无字幕、评论较少）。\n"
-                "获取方式：浏览器登录 B 站 → F12 → Application → Cookies → "
-                "复制 SESSDATA 的值，填到插件配置 sessdata。",
+                "未配置 SESSDATA：当前是游客模式（无字幕、评论较少）。"
+                + chr(10)
+                + "推荐在 WebUI 登录页扫码，或 /bili登录；也可以在插件配置填写 SESSDATA。",
             )
             logger.info(f"{LOG} bili状态 完成（未配置）{time.monotonic() - started:.2f}s")
             return

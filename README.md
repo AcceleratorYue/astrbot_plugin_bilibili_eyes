@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.12.2>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.13.0>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,7 +12,7 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.12.2
+## 当前版本 v0.13.0
 
 - 三种读取模式：普通、增强、**极致模式**；
   - 普通/增强的固定帧数与固定笔记预算保持不变；
@@ -26,7 +26,8 @@
 - 原文缓存独立落盘，内存材料过期/重启后仍可回查；
 - 极致模式补齐像素预算布局、场景权重、候选帧质量、超预算二次压缩；
 - 配置页按 10 个板块分组，旧扁平配置自动迁移；
-- 新增 WebUI 管理页：概览/视频/笔记/原文/缓存/诊断/配置摘要；
+- 新增 WebUI 设置中心：概览/登录/视频/原文/10 组配置/缓存/诊断；
+- 支持 B站扫码登录、账号信息与退出回退；
 - 支持回看、追问、单帧截图、UP 主页、简介/字幕/评论/弹幕清洗、笔记缓存。
 
 [完整版本记录](CHANGELOG.md) · [极致模式设计](docs/动态截帧方案设计_20261104.md) · [原文直读设计](docs/二次查询直接取原文方案_20261104.md) · [WebUI 设计](docs/WebUI设计方案_20261104.md) · [WebUI/扫码登录方案](docs/WebUI与B站扫码登录更新方案_20261108.md) · [内嵌字幕 OCR 方案](docs/内嵌字幕OCR与ASR优先级增强方案_20261105.md) · [安全策略](SECURITY.md) · [许可证](LICENSE)
@@ -85,7 +86,7 @@
 
 | 配置 | 默认 | 说明 |
 | --- | --- | --- |
-| `sessdata` | **必填** | B 站登录态；**不填会导致插件工作异常**：无字幕、评论少、UP 主页/近期投稿易风控、查询失败 |
+| `sessdata` | 推荐扫码 | B站登录态；WebUI「登录」页扫码后自动管理，此项作为手动回退；不填会导致字幕/评论/UP 查询不完整 |
 | `audio_transcription_enabled` | 关 | 用 AstrBot 的 STT Provider 转录音频补字幕 |
 | `audio_transcription_mode` | no_subtitle | no_subtitle=仅无字幕时启用；always=常开，有字幕也转录 |
 | `audio_transcription_provider_id` | 空 | 指定 STT Provider ID；空=当前会话 STT |
@@ -222,21 +223,46 @@ bilibili_transcript(
 
 ## WebUI
 
-在 AstrBot 插件管理页打开「B站之眼 · 观看与笔记管理」。
+在 AstrBot 插件管理页打开「B站之眼 · 设置中心」。
 
 页面包含：
 
-- **概览**：模式、最近观看、笔记/原文/帧缓存；
-- **视频记录**：标题、BV、模式、帧数、笔记字数、文本状态；
+- **概览**：登录、模式、视觉模型、文本来源、缓存、FFmpeg 状态卡，最近观看和运行信息；
+- **登录**：B站扫码登录、账号头像/昵称/UID/等级/大会员、退出登录；
+- **视频记录**：标题、BV、模式、文本来源、时间；
 - **视频详情**：核心笔记 / 其他客观内容 / 帧预算 / 原文；
-- **原文检索**：官方字幕与 ASR 分栏，关键词/时间范围；
-- **缓存管理**：笔记、原文、帧缓存按类型清理；
-- **诊断**：模式、缓存、最近记录；
-- **配置摘要**：只读展示 10 个配置分组，SESSDATA 脱敏。
+- **原文检索**：官方、B站 AI、内嵌 OCR、ASR 分来源和语言检索；
+- **配置**：10 个分组共 100+ 项，支持编辑、恢复默认、底部 savebar、Ctrl+S、热生效；
+- **缓存**：按类型清理，有视频处理中时保护帧缓存；
+- **诊断**：运行环境、路径、接口和最近记录。
 
-WebUI 通过 AstrBot 插件页面桥接，不启动独立服务、不占端口。完整配置修改仍到 AstrBot 配置页。
+WebUI 通过 AstrBot 插件页面桥接，不启动独立服务、不占端口。登录凭据由扫码页管理，配置中的手动 SESSDATA 作为回退。扫码二维码由可选依赖 `qrcode` 本地渲染。
 
-设计稿：[docs/WebUI设计方案_20261104.md](docs/WebUI设计方案_20261104.md)。
+设计稿：
+- [docs/WebUI设计方案_20261104.md](docs/WebUI设计方案_20261104.md)
+- [docs/WebUI与B站扫码登录更新方案_20261108.md](docs/WebUI与B站扫码登录更新方案_20261108.md)
+
+## B站扫码登录
+
+推荐在 WebUI「登录」页生成二维码，用哔哩哔哩手机客户端扫码。
+
+也可以使用指令：
+
+```text
+/bili登录   管理员申请二维码，发送图片或登录链接
+/bili注销   清除扫码凭据，回退到配置 SESSDATA 或游客
+/bili状态   查看登录、OCR、ASR 状态
+```
+
+凭据优先级：
+
+```text
+扫码凭据 credentials.json
+  > 插件配置 sessdata
+  > 游客
+```
+
+凭据保存在插件 data 目录，是明文 JSON；建议使用小号，不要分享 data 目录。退出登录只清扫码凭据，不会删除手动配置的 SESSDATA。
 
 ## SESSDATA 怎么获取
 

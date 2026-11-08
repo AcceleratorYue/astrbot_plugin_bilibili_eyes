@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import inspect
 import json
 import sys
 import time
@@ -18,9 +20,11 @@ from quart import jsonify, request
 try:
     import eyes_subagent as sa
     import eyes_transcript as et
+    from . import settings_spec
 except ImportError:  # pragma: no cover - 直接运行测试时
     from .. import eyes_subagent as sa  # type: ignore
     from .. import eyes_transcript as et  # type: ignore
+    from ..plugin_api import settings_spec  # type: ignore
 
 
 class PluginWebApi:
@@ -30,7 +34,16 @@ class PluginWebApi:
 
     def register(self) -> None:
         routes = (
+            ("status", self.status, ["GET"], "插件状态"),
             ("overview", self.overview, ["GET"], "B站之眼概览"),
+            ("settings", self.settings, ["GET"], "读取设置"),
+            ("settings/save", self.settings_save, ["POST"], "保存设置"),
+            ("settings/reset", self.settings_reset, ["POST"], "恢复默认设置"),
+            ("login/qr", self.login_qr, ["POST"], "申请扫码登录二维码"),
+            ("login/status", self.login_status, ["GET"], "轮询扫码状态"),
+            ("login/account", self.login_account, ["GET"], "读取登录账号"),
+            ("login/logout", self.login_logout, ["POST"], "清除扫码凭据"),
+            ("cache", self.cache_summary, ["GET"], "缓存统计"),
             ("videos", self.videos, ["GET"], "最近视频记录"),
             ("video", self.video_detail, ["GET"], "视频笔记详情"),
             ("transcript", self.transcript, ["GET"], "原文检索"),
@@ -187,6 +200,253 @@ class PluginWebApi:
         rows.sort(key=lambda item: item["created"], reverse=True)
         return rows
 
+    def _config_mapping(self) -> dict[str, str]:
+        mapping = getattr(self.plugin, "CONFIG_KEY_TO_GROUP", None)
+        if mapping:
+            return mapping
+        module = sys.modules.get(type(self.plugin).__module__)
+        return getattr(module, "CONFIG_KEY_TO_GROUP", {}) if module else {}
+
+    def _cache_stats(self) -> dict:
+        cache = getattr(self.plugin, "_cache", None)
+        notes_dir = getattr(cache, "directory", None)
+        try:
+            transcript_dir = self.plugin._transcript_store().directory
+        except Exception:
+            transcript_dir = None
+        return {
+            "notes": self._dir_stats(notes_dir) if notes_dir else {"count": 0, "bytes": 0},
+            "transcripts": self._dir_stats(transcript_dir) if transcript_dir else {"count": 0, "bytes": 0},
+            "frames": self._dir_stats(self._data_dir() / "frames"),
+        }
+
+    async def _save_values(self, values: dict) -> dict:
+        config = getattr(self.plugin, "_config", None)
+        if config is None:
+            raise RuntimeError("插件配置对象不可用")
+        mapping = self._config_mapping()
+        restart_required = False
+        for key, value in values.items():
+            group = mapping.get(key)
+            if not group:
+                continue
+            current = config.get(group)
+            if not isinstance(current, dict):
+                current = {}
+                config[group] = current
+            current[key] = value
+            try:
+                config[key] = value
+            except Exception:
+                pass
+        saver = getattr(config, "save_config_async", None)
+        if callable(saver):
+            try:
+                result = saver()
+                if inspect.isawaitable(result):
+                    await result
+            except TypeError:
+                result = saver(values)
+                if inspect.isawaitable(result):
+                    await result
+        else:
+            saver = getattr(config, "save_config", None)
+            if callable(saver):
+                result = saver()
+                if inspect.isawaitable(result):
+                    await result
+            else:
+                raise RuntimeError("当前 AstrBot 配置对象不支持保存")
+        if any(key in values for key in ("worker_threads", "concurrency_limit")):
+            restart_required = True
+        if "cache_ttl_hours" in values or "cache_max_entries" in values:
+            cache = getattr(self.plugin, "_cache", None)
+            if cache is not None:
+                if "cache_ttl_hours" in values:
+                    cache.ttl_seconds = max(1, int(values["cache_ttl_hours"])) * 3600
+                if "cache_max_entries" in values:
+                    cache.max_entries = max(1, int(values["cache_max_entries"]))
+        if "transcript_ttl_hours" in values or "transcript_max_entries" in values:
+            transcripts = getattr(self.plugin, "_transcripts", None)
+            if transcripts is not None:
+                if "transcript_ttl_hours" in values:
+                    transcripts.ttl_seconds = max(1, int(values["transcript_ttl_hours"])) * 3600
+                if "transcript_max_entries" in values:
+                    transcripts.max_entries = max(1, int(values["transcript_max_entries"]))
+        if "sessdata" in values:
+            self.plugin._account_cache = None
+        return {"restart_required": restart_required}
+
+    async def status(self):
+        try:
+            login = self.plugin._login_summary()
+            account = await self.plugin._bili_account() if login.get("logged_in") else None
+            cache = await asyncio.to_thread(self._cache_stats)
+            ffmpeg_path = ""
+            try:
+                ffmpeg_path = str(self.plugin._client()._ffmpeg_exe() or "")
+            except Exception:
+                pass
+            return self._ok(
+                status={
+                    "version": "0.13.0",
+                    "plugin_name": "astrbot_plugin_bilibili_eyes",
+                    "data_dir": str(self._data_dir()),
+                    "login": {**login, "account": account},
+                    "video_mode": self.plugin._video_mode(),
+                    "vision_provider_id": self.plugin._opt("vision_provider_id") or "",
+                    "asr": {
+                        "enabled": self.plugin._bool_opt("audio_transcription_enabled"),
+                        "mode": self.plugin._opt("audio_transcription_mode") or "",
+                    },
+                    "ocr": {
+                        "enabled": self.plugin._bool_opt("ocr_subtitle_enabled"),
+                        "engine": self.plugin._opt("ocr_engine") or "",
+                        "priority": self.plugin._opt("ocr_subtitle_priority") or "",
+                    },
+                    "ffmpeg": {"path": ffmpeg_path, "available": bool(ffmpeg_path)},
+                    "cache": cache,
+                    "registered_apis": [item[0] for item in self._routes],
+                    "server_time": int(time.time()),
+                }
+            )
+        except Exception as exc:
+            return self._error(f"读取状态失败：{type(exc).__name__}", 500)
+
+    async def settings(self):
+        try:
+            values, secrets = settings_spec.public_values(self.plugin)
+            return self._ok(
+                groups=settings_spec.GROUPS,
+                values=values,
+                secrets_present=secrets,
+            )
+        except Exception as exc:
+            return self._error(f"读取设置失败：{type(exc).__name__}", 500)
+
+    async def settings_save(self):
+        try:
+            payload = await request.get_json() or {}
+        except Exception:
+            payload = {}
+        values = payload.get("values") if isinstance(payload, dict) and isinstance(payload.get("values"), dict) else payload
+        clean, errors = settings_spec.validate_values(values if isinstance(values, dict) else {})
+        if errors:
+            return self._error(errors[0])
+        if not clean:
+            return self._ok(saved=False, message="没有需要保存的更改")
+        try:
+            extra = await self._save_values(clean)
+            values_out, secrets = settings_spec.public_values(self.plugin)
+            return self._ok(
+                saved=True,
+                message=f"已保存 {len(clean)} 项设置",
+                values=values_out,
+                secrets_present=secrets,
+                **extra,
+            )
+        except Exception as exc:
+            return self._error(f"保存设置失败：{type(exc).__name__}", 500)
+
+    async def settings_reset(self):
+        try:
+            payload = await request.get_json() or {}
+        except Exception:
+            payload = {}
+        keys = payload.get("keys") if isinstance(payload, dict) else None
+        group = str(payload.get("group") or "") if isinstance(payload, dict) else ""
+        if isinstance(keys, list):
+            select = [str(item) for item in keys]
+        elif group:
+            select = settings_spec.group_keys(group)
+        else:
+            select = None
+        defaults = settings_spec.default_values(select)
+        try:
+            extra = await self._save_values(defaults)
+            values_out, secrets = settings_spec.public_values(self.plugin)
+            return self._ok(
+                saved=True,
+                message=f"已恢复 {len(defaults)} 项默认值",
+                values=values_out,
+                secrets_present=secrets,
+                **extra,
+            )
+        except Exception as exc:
+            return self._error(f"恢复默认失败：{type(exc).__name__}", 500)
+
+    async def login_qr(self):
+        try:
+            session = await asyncio.to_thread(
+                self.plugin._qr_login.request_qrcode,
+                self._data_dir() / "qrcode",
+            )
+        except Exception as exc:
+            return self._error(f"申请二维码失败：{exc}")
+        image = None
+        if session.qr_image_path:
+            try:
+                raw = Path(session.qr_image_path).read_bytes()
+                image = "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+                Path(session.qr_image_path).unlink(missing_ok=True)
+            except Exception:
+                image = None
+        return self._ok(key=session.qrcode_key, url=session.url, image=image, expires_in=180)
+
+    async def login_status(self):
+        key = str(request.args.get("key", "") or "").strip()
+        if not key:
+            return self._error("缺少二维码 key")
+        try:
+            result = await asyncio.to_thread(self.plugin._qr_login.poll_status, key)
+        except Exception as exc:
+            return self._ok(state="error", code=-1, message=f"轮询失败：{exc}")
+        if result.code == 0 and result.credentials:
+            if not str(result.credentials.get("sessdata") or "").strip():
+                return self._ok(
+                    state="error",
+                    code=0,
+                    message="登录已确认，但没有取到 SESSDATA，请刷新二维码重试",
+                )
+            self.plugin._credentials.save(result.credentials)
+            self.plugin._account_cache = None
+            account = await self.plugin._bili_account(force=True)
+            return self._ok(
+                state="confirmed",
+                code=0,
+                message="登录成功",
+                account=account,
+                login=self.plugin._login_summary(),
+            )
+        state = {86101: "waiting", 86090: "scanned", 86038: "expired"}.get(
+            result.code, "waiting" if result.code > 0 else "error"
+        )
+        return self._ok(state=state, code=result.code, message=result.message)
+
+    async def login_account(self):
+        refresh = str(request.args.get("refresh", "0") or "").lower() in ("1", "true", "yes")
+        try:
+            account = await self.plugin._bili_account(force=refresh)
+        except Exception as exc:
+            return self._error(f"读取账号失败：{type(exc).__name__}", 500)
+        return self._ok(
+            logged_in=bool(self.plugin._login_summary().get("logged_in")),
+            account=account,
+            login=self.plugin._login_summary(),
+        )
+
+    async def login_logout(self):
+        try:
+            self.plugin._credentials.clear()
+            self.plugin._account_cache = None
+            return self._ok(
+                cleared=True,
+                message="已清除扫码凭据",
+                login=self.plugin._login_summary(),
+            )
+        except Exception as exc:
+            return self._error(f"清除凭据失败：{type(exc).__name__}", 500)
+
     # -- GET ---------------------------------------------------------
 
     async def overview(self):
@@ -207,7 +467,7 @@ class PluginWebApi:
             last = videos[0] if videos else None
             return self._ok(
                 overview={
-                    "version": "0.12.2",
+                    "version": "0.13.0",
                     "enabled": self.plugin._bool_opt("enabled"),
                     "video_mode": self.plugin._video_mode(),
                     "last_video": last,
@@ -411,6 +671,9 @@ class PluginWebApi:
             return self._error("不支持的缓存类型")
         if bvid and not bvid.upper().startswith("BV"):
             return self._error("bvid 格式不正确")
+        active = getattr(self.plugin, "_active", {}) or {}
+        if kind in {"frames", "all"} and active:
+            return self._error("有视频正在处理中，暂不能清理帧缓存；请等任务结束后再试")
         removed = {"notes": 0, "transcripts": 0, "frames": 0}
         try:
             if kind in {"notes", "all"}:
