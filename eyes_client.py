@@ -827,7 +827,7 @@ class BiliClient:
                 raw = process.stdout.read(frame_size)
                 if not raw or len(raw) < frame_size:
                     break
-                yield index / max(1, int(fps)), raw
+                yield index * max(0.25, float(step)), raw
                 index += 1
         finally:
             try:
@@ -848,6 +848,7 @@ class BiliClient:
         max_seconds: int = 1200,
         width: int = 960,
         height: int = 320,
+        step: float = 1.0,
         referer: str = "https://www.bilibili.com/",
     ):
         """按 fps 输出裁剪后的字幕区域 RGB 帧，供 OCR 使用。"""
@@ -887,7 +888,7 @@ class BiliClient:
             "-t",
             str(limit),
             "-vf",
-            f"fps={max(1, int(fps))},{crop},scale={int(width)}:{int(height)}",
+            f"fps={1.0 / max(0.25, float(step)):.6f},{crop},scale={int(width)}:{int(height)}",
             "-an",
             "-f",
             "rawvideo",
@@ -908,7 +909,7 @@ class BiliClient:
                 raw = process.stdout.read(frame_size)
                 if not raw or len(raw) < frame_size:
                     break
-                yield index / max(1, int(fps)), raw
+                yield index * max(0.25, float(step)), raw
                 index += 1
         finally:
             try:
