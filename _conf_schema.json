@@ -583,8 +583,8 @@
       "ocr_subtitle_use_gpu": {
         "description": "OCR GPU 加速",
         "type": "string",
-        "hint": "auto=检测到 CUDA 才用；需要 onnxruntime-gpu，CPU 环境保持 auto/cpu",
-        "options": ["auto", "cpu", "gpu"],
+        "hint": "auto=优先 CUDA，其次 Windows DirectML，最后 CPU；AMD/Intel 核显用 dml（需 onnxruntime-directml）",
+        "options": ["auto", "cpu", "gpu", "dml"],
         "default": "auto"
       },
       "ocr_subtitle_time_budget": {

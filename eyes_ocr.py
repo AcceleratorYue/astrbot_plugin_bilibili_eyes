@@ -8,6 +8,7 @@ from __future__ import annotations
 import bisect
 import difflib
 import io
+import platform
 import re
 import threading
 import time
@@ -109,20 +110,26 @@ def _looks_same(previous: bytes, current: bytes) -> bool:
 
 
 class RapidOcrEngine:
-    def __init__(self, use_gpu: bool = False) -> None:
+    def __init__(self, backend: str = "cpu") -> None:
         from rapidocr_onnxruntime import RapidOCR  # type: ignore
 
         kwargs: dict[str, Any] = {}
-        if use_gpu:
+        if backend == "cuda":
             kwargs = {
                 "Det.use_cuda": True,
                 "Cls.use_cuda": True,
                 "Rec.use_cuda": True,
             }
+        elif backend == "dml":
+            kwargs = {
+                "Det.use_dml": True,
+                "Cls.use_dml": True,
+                "Rec.use_dml": True,
+            }
         try:
             self.engine = RapidOCR(**kwargs) if kwargs else RapidOCR()
         except Exception:
-            # 没装 onnxruntime-gpu 或 CUDA 不可用时退回 CPU。
+            # GPU/DML 初始化失败时退回 CPU，不能因为加速不可用导致 OCR 失败。
             self.engine = RapidOCR()
 
     def recognize(self, image: Image.Image) -> list[tuple[str, float, float]]:
@@ -151,28 +158,48 @@ class RapidOcrEngine:
         return lines
 
 
-def _gpu_available() -> bool:
+def _available_providers() -> list[str]:
     try:
         import onnxruntime as ort  # type: ignore
 
-        return "CUDAExecutionProvider" in ort.get_available_providers()
+        return [str(item) for item in ort.get_available_providers()]
     except Exception:
-        return False
+        return []
 
 
-def _want_gpu(value: Any) -> bool:
+def _resolve_ocr_backend(value: Any) -> str:
+    """把 auto/gpu/dml/cpu 解析成 cuda/dml/cpu。
+
+    DirectML 是 Windows 上的跨厂商方案，AMD/Intel 核显和独显都能走；
+    CUDA 仅 NVIDIA。auto 顺序：CUDA > DirectML > CPU。
+    """
+
     raw = str(value or "auto").strip().lower()
-    if raw in ("1", "true", "yes", "on", "cuda", "gpu"):
-        return True
-    if raw in ("0", "false", "no", "off", "cpu"):
-        return False
-    return _gpu_available()
+    providers = _available_providers()
+    if raw in ("cpu", "0", "false", "no", "off"):
+        return "cpu"
+    if raw in ("cuda", "gpu", "1", "true", "yes", "on"):
+        return "cuda" if "CUDAExecutionProvider" in providers else "cpu"
+    if raw in ("dml", "directml", "amd", "intel"):
+        return (
+            "dml"
+            if "DmlExecutionProvider" in providers and platform.system() == "Windows"
+            else "cpu"
+        )
+    if "CUDAExecutionProvider" in providers:
+        return "cuda"
+    if (
+        "DmlExecutionProvider" in providers
+        and platform.system() == "Windows"
+    ):
+        return "dml"
+    return "cpu"
 
 
 def _make_engine(name: str, use_gpu: Any = "auto"):
     value = str(name or "auto").strip().lower()
     if value in ("auto", "rapidocr", "rapidocr_onnxruntime"):
-        return RapidOcrEngine(use_gpu=_want_gpu(use_gpu))
+        return RapidOcrEngine(backend=_resolve_ocr_backend(use_gpu))
     raise RuntimeError(f"不支持的 OCR 引擎：{name}")
 
 

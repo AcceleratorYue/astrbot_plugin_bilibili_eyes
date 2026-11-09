@@ -402,7 +402,7 @@ class BilibiliEyesPlugin(Star):
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
         self._account_cache: tuple[float, dict] | None = None
-        logger.info(f"{LOG} 插件 v0.14.0 已加载")
+        logger.info(f"{LOG} 插件 v0.14.1 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
