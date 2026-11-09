@@ -1041,6 +1041,9 @@ def test_embedded_ocr_and_asr_quality() -> None:
     )
     assert change_result.tracks and change_result.coverage > 0.2
     assert change_result.tracks[0].lines[0][1] == "边界二分字幕"
+    assert eo._resolve_ocr_backend("cpu") == "cpu"
+    assert eo._resolve_ocr_backend("dml") in ("dml", "cpu")
+    assert eo._resolve_ocr_backend("auto") in ("cuda", "dml", "cpu")
 
     ok, reason = eo.evaluate_asr_quality(["why?", "why?", "why?", "why?"])
     assert not ok and reason in ("high_repetition", "filler_heavy")
@@ -1427,7 +1430,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.14.0" in meta
+    assert "version: 0.14.1" in meta
     print("✅ 配置 schema / metadata")
 
 

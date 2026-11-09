@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.14.1 (2026-11-10)
+
+为没有 CUDA 的 AMD / Intel 核显增加 DirectML OCR 加速兼容。
+
+### 加速后端
+
+- `ocr_subtitle_use_gpu=auto` 的顺序改为：CUDA → DirectML → CPU；
+- 新增 `dml` 选项，走 Windows DirectML，支持 AMD/Intel 核显和独显；
+- DirectML 需要安装 `onnxruntime-directml`（替换普通 `onnxruntime`）；
+- 初始化失败自动回退 CPU，不影响 OCR；
+- `gpu` 仍表示 CUDA；
+- 文档补充 AMD/Intel 核显说明。
+
+### 限制
+
+- DirectML 仅 Windows；
+- 当前机器没有 CUDA/DirectML provider，实际 GPU/DML 速度未实测；
+- Linux 下 AMD ROCm / Intel OpenVINO 尚未接入。
+
 ## 0.14.0 (2026-11-10)
 
 内嵌字幕 OCR 改为“字幕区域变化检测 + 边界二分 + 并行 OCR”，减少无效逐帧 OCR。

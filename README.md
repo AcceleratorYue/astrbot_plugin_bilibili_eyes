@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.14.0>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.14.1>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,7 +12,7 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.14.0
+## 当前版本 v0.14.1
 
 - 三种读取模式：普通、增强、**极致模式**；
   - 普通/增强的固定帧数与固定笔记预算保持不变；
@@ -102,7 +102,7 @@
 | `ocr_subtitle_change_detection` | 开 | 先扫描字幕区域变化点，只 OCR 候选帧 |
 | `ocr_subtitle_scan_fps` | 4 | 变化检测扫描帧率 |
 | `ocr_subtitle_workers` | 2 | 并行 OCR 线程数 |
-| `ocr_subtitle_use_gpu` | auto | auto/cpu/gpu；有 CUDA 时尝试 GPU |
+| `ocr_subtitle_use_gpu` | auto | auto/cpu/gpu/dml；AMD/Intel 核显用 dml |
 | `ocr_subtitle_time_budget` | 150 | OCR 时间预算，超时返回部分结果 |
 | `ocr_subtitle_min_confidence` | 0.6 | OCR 最低置信度 |
 | `ocr_engine` | auto | OCR 引擎；默认 RapidOCR |
@@ -436,6 +436,18 @@ ASR 永远是最后兜底；有 OCR 时不会用 ASR 覆盖。
 - 双语硬字幕尝试拆成主/辅两轨。
 
 前提：安装 `rapidocr_onnxruntime`（已加入 `requirements.txt`）。OCR 失败或未安装时自动回退 ASR。
+
+可选加速：
+
+```text
+# NVIDIA CUDA
+pip install onnxruntime-gpu
+
+# Windows AMD / Intel 核显（DirectML）
+pip install onnxruntime-directml
+```
+
+`onnxruntime-gpu` 和 `onnxruntime-directml` 不要同时安装；`ocr_subtitle_use_gpu=auto` 会自动选择可用后端，失败回退 CPU。
 
 完整方案见：[内嵌字幕OCR与ASR优先级增强方案_20261105.md](docs/内嵌字幕OCR与ASR优先级增强方案_20261105.md)。
 
