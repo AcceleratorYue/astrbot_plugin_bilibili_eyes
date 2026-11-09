@@ -921,6 +921,74 @@ class BiliClient:
                 except Exception:
                     pass
 
+    def grab_subtitle_frame(
+        self,
+        stream_url: str,
+        seconds: float,
+        region: str = "auto",
+        width: int = 960,
+        height: int = 320,
+        referer: str = "https://www.bilibili.com/",
+    ) -> bytes:
+        """精确抓取某一时刻的字幕区域 RGB 帧，供边界复核/候选帧 OCR。"""
+
+        if not isinstance(stream_url, str) or not stream_url.startswith(
+            ("http://", "https://")
+        ):
+            return b""
+        key = str(region or "auto").strip().lower()
+        crop = (
+            "crop=iw:ih*0.35:0:0"
+            if key == "top"
+            else "crop=iw:ih*0.32:0:ih*0.68"
+        )
+        headers = (
+            "Referer: "
+            + referer
+            + chr(13)
+            + chr(10)
+            + "User-Agent: "
+            + self.http._headers.get("User-Agent", "")
+            + chr(13)
+            + chr(10)
+        )
+        cmd = [
+            self._ffmpeg_exe(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-headers",
+            headers,
+            "-ss",
+            f"{max(0.0, float(seconds)):.3f}",
+            "-i",
+            stream_url,
+            "-frames:v",
+            "1",
+            "-vf",
+            f"{crop},scale={int(width)}:{int(height)}",
+            "-an",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ]
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=20,
+            )
+            frame_size = max(1, int(width)) * max(1, int(height)) * 3
+            raw = result.stdout or b""
+            return raw if len(raw) >= frame_size else b""
+        except Exception:
+            return b""
+
     def extract_audio(
         self,
         stream_url: str,

@@ -1009,6 +1009,39 @@ def test_embedded_ocr_and_asr_quality() -> None:
     assert result.coverage > 0.3
     assert result.tracks[0].lines[0][1]
 
+    class ChangeFrames:
+        def iter_subtitle_frames(self, *args, **kwargs):
+            # 4fps，2~6 秒字幕出现，6 秒后变化；最后的帧用于覆盖全片。
+            for index in range(49):
+                stamp = index * 0.25
+                value = 180 if 2.0 <= stamp < 6.0 else 20
+                raw = bytes([value]) * (320 * 120 * 3)
+                yield stamp, raw
+
+        def grab_subtitle_frame(self, *args, **kwargs):
+            return bytes([200]) * (960 * 320 * 3)
+
+    class ChangeEngine:
+        def recognize(self, image):
+            return [("边界二分字幕", 0.95, 0)]
+
+    change_result = eo.extract_embedded_subtitles(
+        ChangeFrames(),
+        "https://example.invalid/v",
+        12.0,
+        eo.OcrConfig(
+            enabled=True,
+            min_confidence=0.6,
+            min_coverage=0.1,
+            time_budget=20,
+            workers=1,
+            use_gpu="cpu",
+        ),
+        engine=ChangeEngine(),
+    )
+    assert change_result.tracks and change_result.coverage > 0.2
+    assert change_result.tracks[0].lines[0][1] == "边界二分字幕"
+
     ok, reason = eo.evaluate_asr_quality(["why?", "why?", "why?", "why?"])
     assert not ok and reason in ("high_repetition", "filler_heavy")
     ok, _ = eo.evaluate_asr_quality(["这是完整的一句话", "第二句有实际内容", "第三句也正常"])
@@ -1028,7 +1061,7 @@ def test_embedded_ocr_and_asr_quality() -> None:
     assert plugin._should_try_ocr([human_track]) is False
     plugin._config["ocr_subtitle_priority"] = "before_ai"
     assert plugin._should_try_ocr([ai_track]) is True
-    print("✅ 内嵌 OCR：采样/去重/置信度 / ASR 幻觉质量门")
+    print("✅ 内嵌 OCR：变化检测/边界二分/采样去重 / ASR 幻觉质量门")
 
 
 def test_video_mode() -> None:
@@ -1394,7 +1427,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.13.2" in meta
+    assert "version: 0.14.0" in meta
     print("✅ 配置 schema / metadata")
 
 

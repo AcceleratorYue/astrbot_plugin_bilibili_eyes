@@ -1,7 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.13.2>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.14.0>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -12,7 +12,7 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.13.2
+## 当前版本 v0.14.0
 
 - 三种读取模式：普通、增强、**极致模式**；
   - 普通/增强的固定帧数与固定笔记预算保持不变；
@@ -99,7 +99,11 @@
 | `subtitle_secondary_langs` | en,en-US,en-GB | 辅字幕语言优先级；主字幕已是英语时自动改找其他语系 |
 | `ocr_subtitle_enabled` | 开 | 无人工/AI 字幕时识别画面内嵌字幕，优先级高于 ASR |
 | `ocr_subtitle_priority` | after_ai | after_ai=官方 AI 优先；before_ai=内嵌 OCR 优先；ASR 永远最后 |
-| `ocr_subtitle_fps` | 1 | OCR 采样帧率 |
+| `ocr_subtitle_change_detection` | 开 | 先扫描字幕区域变化点，只 OCR 候选帧 |
+| `ocr_subtitle_scan_fps` | 4 | 变化检测扫描帧率 |
+| `ocr_subtitle_workers` | 2 | 并行 OCR 线程数 |
+| `ocr_subtitle_use_gpu` | auto | auto/cpu/gpu；有 CUDA 时尝试 GPU |
+| `ocr_subtitle_time_budget` | 150 | OCR 时间预算，超时返回部分结果 |
 | `ocr_subtitle_min_confidence` | 0.6 | OCR 最低置信度 |
 | `ocr_engine` | auto | OCR 引擎；默认 RapidOCR |
 | `vision_provider_id` | 空 | 空 = 跟随主模型；主模型无视觉则不截帧（文本笔记）。也可指定支持图片的 provider |

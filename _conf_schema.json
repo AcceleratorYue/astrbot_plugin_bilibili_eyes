@@ -550,6 +550,49 @@
         "hint": "低于该覆盖率则回退 ASR/无字幕；默认0.15",
         "default": 0.15
       },
+      "ocr_subtitle_change_detection": {
+        "description": "启用字幕区域变化检测",
+        "type": "bool",
+        "hint": "开启后先低价扫描变化点，再只 OCR 变化帧；比全量逐帧快很多",
+        "default": true
+      },
+      "ocr_subtitle_scan_fps": {
+        "description": "变化检测扫描帧率",
+        "type": "int",
+        "hint": "默认4；越高边界越准，扫描耗时略增",
+        "default": 4
+      },
+      "ocr_subtitle_change_threshold": {
+        "description": "变化检测阈值",
+        "type": "float",
+        "hint": "默认12；背景运动大、变化点过多时可调高",
+        "default": 12.0
+      },
+      "ocr_subtitle_safety_interval": {
+        "description": "安全采样间隔（秒）",
+        "type": "float",
+        "hint": "默认12；用于兜底纯字幕/变化不明显的片段",
+        "default": 12.0
+      },
+      "ocr_subtitle_workers": {
+        "description": "OCR 并行线程",
+        "type": "int",
+        "hint": "默认2；CPU 核少时设1，核多可设2~4",
+        "default": 2
+      },
+      "ocr_subtitle_use_gpu": {
+        "description": "OCR GPU 加速",
+        "type": "string",
+        "hint": "auto=检测到 CUDA 才用；需要 onnxruntime-gpu，CPU 环境保持 auto/cpu",
+        "options": ["auto", "cpu", "gpu"],
+        "default": "auto"
+      },
+      "ocr_subtitle_time_budget": {
+        "description": "OCR 时间预算（秒）",
+        "type": "int",
+        "hint": "默认150；达到预算返回部分结果，避免工具超时",
+        "default": 150
+      },
       "include_description": {
         "description": "读取简介",
         "type": "bool",

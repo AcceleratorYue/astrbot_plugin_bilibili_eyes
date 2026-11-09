@@ -58,7 +58,7 @@ FOLLOWUP_RE = re.compile(
 FOLLOWUP_TTL_SECONDS = 30 * 60
 VIDEO_RESULT_TTL_SECONDS = 120
 CACHE_VERSION = "6"
-OCR_VERSION = "2"
+OCR_VERSION = "3"
 
 DEFAULT_OPTIONS: dict = {
     "enabled": True,
@@ -134,6 +134,13 @@ DEFAULT_OPTIONS: dict = {
     "ocr_engine": "auto",
     "ocr_subtitle_max_seconds": 1200,
     "ocr_subtitle_min_coverage": 0.15,
+    "ocr_subtitle_change_detection": True,
+    "ocr_subtitle_scan_fps": 4,
+    "ocr_subtitle_change_threshold": 12.0,
+    "ocr_subtitle_safety_interval": 12.0,
+    "ocr_subtitle_workers": 2,
+    "ocr_subtitle_use_gpu": "auto",
+    "ocr_subtitle_time_budget": 150,
     "include_description": True,
     "include_comments": True,
     "comment_limit": 12,
@@ -283,6 +290,13 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "ocr_engine",
         "ocr_subtitle_max_seconds",
         "ocr_subtitle_min_coverage",
+        "ocr_subtitle_change_detection",
+        "ocr_subtitle_scan_fps",
+        "ocr_subtitle_change_threshold",
+        "ocr_subtitle_safety_interval",
+        "ocr_subtitle_workers",
+        "ocr_subtitle_use_gpu",
+        "ocr_subtitle_time_budget",
         "include_description",
         "include_comments",
         "comment_limit",
@@ -388,7 +402,7 @@ class BilibiliEyesPlugin(Star):
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
         self._account_cache: tuple[float, dict] | None = None
-        logger.info(f"{LOG} 插件 v0.13.2 已加载")
+        logger.info(f"{LOG} 插件 v0.14.0 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -1806,6 +1820,15 @@ class BilibiliEyesPlugin(Star):
             engine=str(self._opt("ocr_engine") or "auto"),
             max_seconds=self._int_opt("ocr_subtitle_max_seconds", 1200),
             min_coverage=float(self._opt("ocr_subtitle_min_coverage") or 0.15),
+            change_detection=self._bool_opt("ocr_subtitle_change_detection"),
+            scan_fps=self._int_opt("ocr_subtitle_scan_fps", 4),
+            change_threshold=float(
+                self._opt("ocr_subtitle_change_threshold") or 12.0
+            ),
+            safety_interval=float(self._opt("ocr_subtitle_safety_interval") or 12.0),
+            workers=self._int_opt("ocr_subtitle_workers", 2),
+            use_gpu=str(self._opt("ocr_subtitle_use_gpu") or "auto"),
+            time_budget=float(self._opt("ocr_subtitle_time_budget") or 150),
         )
 
     def _should_try_ocr(self, tracks: list[bc.SubtitleTrack]) -> bool:
@@ -1867,7 +1890,7 @@ class BilibiliEyesPlugin(Star):
             # 避免 OCR 一直占满预算导致整个 bilibili_watch 被取消。
             elapsed = time.monotonic() - float(job.started)
             cfg.time_budget = min(
-                float(cfg.time_budget or 60),
+                float(cfg.time_budget or 150),
                 max(20.0, 285.0 - elapsed - 80.0),
             )
             job.stage = "内嵌字幕 OCR"
