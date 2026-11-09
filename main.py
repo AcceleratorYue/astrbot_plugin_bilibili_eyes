@@ -388,7 +388,7 @@ class BilibiliEyesPlugin(Star):
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
         self._account_cache: tuple[float, dict] | None = None
-        logger.info(f"{LOG} 插件 v0.13.1 已加载")
+        logger.info(f"{LOG} 插件 v0.13.2 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -1863,6 +1863,13 @@ class BilibiliEyesPlugin(Star):
         if not cfg.enabled:
             return False
         if job:
+            # AstrBot 的本地工具上限是 300s；给后续帧/子代理留出时间，
+            # 避免 OCR 一直占满预算导致整个 bilibili_watch 被取消。
+            elapsed = time.monotonic() - float(job.started)
+            cfg.time_budget = min(
+                float(cfg.time_budget or 60),
+                max(20.0, 285.0 - elapsed - 80.0),
+            )
             job.stage = "内嵌字幕 OCR"
         try:
             info = await self._run(
@@ -1880,7 +1887,7 @@ class BilibiliEyesPlugin(Star):
             return False
         material.warnings.extend(result.warnings)
         material.ocr_status = result.status
-        if result.status == "available" and result.coverage >= cfg.min_coverage:
+        if result.status in ("available", "partial") and result.coverage >= cfg.min_coverage:
             self._apply_subtitle_tracks(material, result.tracks, "ocr")
             material.official_status = "absent"
             material.warnings.append(

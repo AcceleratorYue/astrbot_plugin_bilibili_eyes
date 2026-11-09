@@ -29,6 +29,8 @@ class OcrConfig:
     min_coverage: float = 0.15
     frame_width: int = 960
     frame_height: int = 320
+    max_samples: int = 120
+    time_budget: float = 60.0
 
 
 @dataclass
@@ -41,7 +43,7 @@ class OcrResult:
 
     @property
     def usable(self) -> bool:
-        return self.status == "available" and bool(self.tracks)
+        return self.status in ("available", "partial") and bool(self.tracks)
 
 
 def _clean_lines(lines: Iterable[Any]) -> list[str]:
@@ -201,6 +203,13 @@ def extract_embedded_subtitles(
     fps = max(1, min(4, int(config.fps or 1)))
     width = max(320, int(config.frame_width or 960))
     height = max(120, int(config.frame_height or 320))
+    duration_value = max(1.0, float(duration or 1.0))
+    # 长视频不要按 1fps 处理全部帧，否则会超过 AstrBot 工具 300s 超时。
+    # 在不改变总时长的前提下降低采样密度，最多处理 max_samples 帧。
+    step = max(
+        1.0 / fps,
+        duration_value / max(20, int(config.max_samples or 120)),
+    )
     frames = client.iter_subtitle_frames(
         stream_url,
         duration,
@@ -209,13 +218,18 @@ def extract_embedded_subtitles(
         max_seconds=max(30, int(config.max_seconds or 1200)),
         width=width,
         height=height,
+        step=step,
     )
     groups: list[dict] = []
     previous_raw = b""
     frame_count = 0
     text_seconds = 0.0
     warnings: list[str] = []
+    timed_out = False
     for stamp, raw in frames:
+        if time.monotonic() - started >= max(20.0, float(config.time_budget or 60.0)):
+            timed_out = True
+            break
         frame_count += 1
         if _looks_same(previous_raw, raw):
             # 画面没有变化说明字幕也没有变化；延长最后一条字幕的持续时间，
@@ -308,8 +322,11 @@ def extract_embedded_subtitles(
                 confidence=tracks[0].confidence,
             )
         )
-    status = "available" if coverage >= float(config.min_coverage) else "low_coverage"
-    if status == "low_coverage":
+    enough = coverage >= float(config.min_coverage)
+    status = "partial" if enough and timed_out else ("available" if enough else "low_coverage")
+    if timed_out and enough:
+        warnings.append(f"内嵌字幕 OCR 达到时间预算，已返回前段结果（覆盖 {coverage:.0%}）")
+    if not enough:
         warnings.append(
             f"内嵌字幕 OCR 覆盖率仅 {coverage:.0%}，将回退 ASR/无字幕"
         )
