@@ -984,8 +984,11 @@ def test_compression_and_candidate_times() -> None:
 def test_embedded_ocr_and_asr_quality() -> None:
     class FakeFrames:
         def iter_subtitle_frames(self, *args, **kwargs):
-            for index in range(8):
-                yield float(index), bytes([(index * 73 + 20) % 256]) * (960 * 320 * 3)
+            # 前 5 秒画面/字幕相同，模拟 1fps 下同一句字幕被跳帧采样。
+            same = b"x" * (960 * 320 * 3)
+            for index in range(9):
+                raw = same if index < 5 else bytes([(index * 73 + 20) % 256]) * (960 * 320 * 3)
+                yield float(index), raw
 
     class FakeEngine:
         def __init__(self):
@@ -1003,7 +1006,8 @@ def test_embedded_ocr_and_asr_quality() -> None:
     )
     assert result.tracks and result.tracks[0].origin == "ocr"
     assert result.tracks[0].lines
-    assert result.coverage > 0.1
+    assert result.coverage > 0.3
+    assert result.tracks[0].lines[0][1]
 
     ok, reason = eo.evaluate_asr_quality(["why?", "why?", "why?", "why?"])
     assert not ok and reason in ("high_repetition", "filler_heavy")
@@ -1390,7 +1394,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.13.0" in meta
+    assert "version: 0.13.1" in meta
     print("✅ 配置 schema / metadata")
 
 

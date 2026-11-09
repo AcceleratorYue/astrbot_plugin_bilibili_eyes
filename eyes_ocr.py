@@ -166,6 +166,7 @@ def _frame_lines(
         (text, confidence, y)
         for text, confidence, y in engine.recognize(image)
         if confidence >= min_confidence
+        and not (len(text) < 3 and confidence < 0.8)
     ]
     if not lines:
         return "", 0.0
@@ -217,6 +218,13 @@ def extract_embedded_subtitles(
     for stamp, raw in frames:
         frame_count += 1
         if _looks_same(previous_raw, raw):
+            # 画面没有变化说明字幕也没有变化；延长最后一条字幕的持续时间，
+            # 不能因为跳帧而把稳定字幕丢掉。
+            if groups:
+                groups[-1]["end"] = max(
+                    float(groups[-1]["end"]),
+                    float(stamp) + 1.0 / max(1, fps),
+                )
             continue
         previous_raw = raw
         try:
@@ -253,8 +261,7 @@ def extract_embedded_subtitles(
     usable_groups = [
         group
         for group in groups
-        if int(group.get("hits", 1)) >= 2
-        and group["end"] - group["start"] >= 0.8
+        if group["end"] - group["start"] >= 1.2
         and group["confidence"] >= float(config.min_confidence)
     ]
     if not usable_groups:

@@ -58,6 +58,7 @@ FOLLOWUP_RE = re.compile(
 FOLLOWUP_TTL_SECONDS = 30 * 60
 VIDEO_RESULT_TTL_SECONDS = 120
 CACHE_VERSION = "6"
+OCR_VERSION = "2"
 
 DEFAULT_OPTIONS: dict = {
     "enabled": True,
@@ -387,7 +388,7 @@ class BilibiliEyesPlugin(Star):
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
         self._account_cache: tuple[float, dict] | None = None
-        logger.info(f"{LOG} 插件 v0.13.0 已加载")
+        logger.info(f"{LOG} 插件 v0.13.1 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -1925,8 +1926,9 @@ class BilibiliEyesPlugin(Star):
                     "subtitle_dual_checked"
                 ):
                     cached = None
-                if self._bool_opt("ocr_subtitle_enabled") and not meta.get(
-                    "ocr_checked"
+                if self._bool_opt("ocr_subtitle_enabled") and (
+                    not meta.get("ocr_checked")
+                    or meta.get("ocr_engine_version") != OCR_VERSION
                 ):
                     cached = None
             if cached:
@@ -2121,6 +2123,7 @@ class BilibiliEyesPlugin(Star):
                         "subtitle_dual": len(material.subtitle_tracks) > 1,
                         "subtitle_dual_checked": True,
                         "ocr_checked": True,
+                        "ocr_engine_version": OCR_VERSION,
                         "ocr_status": material.ocr_status,
                         "text_origin": material.subtitle_source,
                         "core_chars": len(sa.split_note_sections(digest)[0]),
