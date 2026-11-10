@@ -49,6 +49,7 @@ class PluginWebApi:
             ("transcript", self.transcript, ["GET"], "原文检索"),
             ("cache-summary", self.cache_summary, ["GET"], "缓存统计"),
             ("cache-cleanup", self.cache_cleanup, ["POST"], "清理缓存"),
+            ("cache/cleanup", self.cache_cleanup, ["POST"], "清理缓存"),
             ("config", self.config, ["GET"], "只读配置摘要"),
             ("diagnostics", self.diagnostics, ["GET"], "诊断信息"),
         )
@@ -289,7 +290,7 @@ class PluginWebApi:
                 pass
             return self._ok(
                 status={
-                    "version": "0.14.3",
+                    "version": "0.14.4",
                     "plugin_name": "astrbot_plugin_bilibili_eyes",
                     "data_dir": str(self._data_dir()),
                     "login": {**login, "account": account},
@@ -467,7 +468,7 @@ class PluginWebApi:
             last = videos[0] if videos else None
             return self._ok(
                 overview={
-                    "version": "0.14.3",
+                    "version": "0.14.4",
                     "enabled": self.plugin._bool_opt("enabled"),
                     "video_mode": self.plugin._video_mode(),
                     "last_video": last,
