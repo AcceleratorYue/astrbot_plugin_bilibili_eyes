@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.5 (2026-11-10)
+
+- 新增 GitHub Actions CI：Python 3.12、静态检查、JS 语法、离线回归；
+- 修复 CI 在 Linux 上暴露的 BV 大小写问题：
+  `_transcript_doc_for` 不再把会话 BV 转大写后直接查磁盘，
+  避免 `BV1READ` 找不到 `BV1read`；
+- CI 已通过。
+
 ## 0.14.4 (2026-11-10)
 
 - 补上 `/cache/cleanup` 路由别名，WebUI 缓存清理按钮不再 404；

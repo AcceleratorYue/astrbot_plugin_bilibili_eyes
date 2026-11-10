@@ -3,7 +3,7 @@
 [![CI](https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/actions/workflows/ci.yml/badge.svg)](https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/actions/workflows/ci.yml)
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.14.4>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.14.5>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -14,7 +14,7 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.14.4
+## 当前版本 v0.14.5
 
 - 三种读取模式：普通、增强、**极致模式**；
   - 普通/增强的固定帧数与固定笔记预算保持不变；

@@ -290,7 +290,7 @@ class PluginWebApi:
                 pass
             return self._ok(
                 status={
-                    "version": "0.14.4",
+                    "version": "0.14.5",
                     "plugin_name": "astrbot_plugin_bilibili_eyes",
                     "data_dir": str(self._data_dir()),
                     "login": {**login, "account": account},
@@ -468,7 +468,7 @@ class PluginWebApi:
             last = videos[0] if videos else None
             return self._ok(
                 overview={
-                    "version": "0.14.4",
+                    "version": "0.14.5",
                     "enabled": self.plugin._bool_opt("enabled"),
                     "video_mode": self.plugin._video_mode(),
                     "last_video": last,
