@@ -827,7 +827,7 @@ class BiliClient:
                 raw = process.stdout.read(frame_size)
                 if not raw or len(raw) < frame_size:
                     break
-                yield index * max(0.25, float(step)), raw
+                yield index / max(1, int(fps)), raw
                 index += 1
         finally:
             try:

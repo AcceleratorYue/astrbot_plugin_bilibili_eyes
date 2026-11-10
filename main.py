@@ -402,7 +402,7 @@ class BilibiliEyesPlugin(Star):
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
         self._account_cache: tuple[float, dict] | None = None
-        logger.info(f"{LOG} 插件 v0.14.2 已加载")
+        logger.info(f"{LOG} 插件 v0.14.3 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -1247,6 +1247,14 @@ class BilibiliEyesPlugin(Star):
 
     # -- 工具 ---------------------------------------------------------
 
+    @staticmethod
+    def _text_tool_result(text: str):
+        """统一所有纯文本工具的返回协议。"""
+
+        from mcp.types import CallToolResult, TextContent
+
+        return CallToolResult(content=[TextContent(type="text", text=str(text or ""))])
+
     @filter.llm_tool(name="bilibili_watch")
     async def tool_watch(self, event: AstrMessageEvent, bvid: str):
         """看一个 B 站视频，返回你刚才观看后看到的客观内容。
@@ -1255,13 +1263,13 @@ class BilibiliEyesPlugin(Star):
             bvid(string): B站 BV 号、av 号或视频链接
         """
         if not self._bool_opt("enabled"):
-            return "B站观看功能未启用。"
+            return self._text_tool_result("B站观看功能未启用。")
         if not self._quota_ok(event):
-            return "今天的观看次数已用完。"
+            return self._text_tool_result("今天的观看次数已用完。")
         refs = bc.extract_video_refs(str(bvid or "")) or [str(bvid or "").strip()]
         refs = [ref for ref in refs if ref]
         if not refs:
-            return "没有识别到有效的 B 站链接。"
+            return self._text_tool_result("没有识别到有效的 B 站链接。")
         ignored = max(0, len(refs) - 1)
         umo = event.unified_msg_origin
         job = Job(started=time.monotonic(), stage="取信息", bvid=refs[0])
@@ -1272,7 +1280,7 @@ class BilibiliEyesPlugin(Star):
                     job, event, refs[0], bc.extract_page(str(bvid))
                 )
             if not digest:
-                return "这次没看成（可能网络/风控/无视觉），请稍后再试。"
+                return self._text_tool_result("这次没看成（可能网络/风控/无视觉），请稍后再试。")
             self._materials.put(umo, material, digest)
             self._session_materials[umo] = {
                 "kind": "video",
@@ -1291,15 +1299,17 @@ class BilibiliEyesPlugin(Star):
                 ],
                 "created": time.time(),
             }
-            return sa.build_main_model_prompt(
-                digest,
-                ignored,
-                guard=self._bool_opt("injection_guard"),
-                template=str(self._opt("main_model_prompt_template") or ""),
+            return self._text_tool_result(
+                sa.build_main_model_prompt(
+                    digest,
+                    ignored,
+                    guard=self._bool_opt("injection_guard"),
+                    template=str(self._opt("main_model_prompt_template") or ""),
+                )
             )
         except Exception as exc:
             logger.warning(f"{LOG} 工具观看失败：{exc}")
-            return "这次没看成（网络/风控/无视觉），请稍后再试。"
+            return self._text_tool_result("这次没看成（网络/风控/无视觉），请稍后再试。")
         finally:
             self._active.pop(umo, None)
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.14.3 (2026-11-10)
+
+修复增强/极致模式采样回归与缓存清理参数失效。
+
+### 修复
+
+- `iter_lowres_frames` 恢复使用 `index / fps` 计算时间戳；
+  0.14.0 批量替换 OCR 的 `step` 时误伤该函数，导致增强/极致模式触发 `NameError`；
+- `cache_cleanup` 真正使用 `expired_only`：
+  - 笔记按 `created` + `NoteCache.ttl_seconds` 判断；
+  - 原文按 `updated/created` + `TranscriptStore.ttl_seconds` 判断；
+  - `expired_only` 时不动没有 TTL 元数据的帧缓存；
+  - 返回 `removed` / `skipped` / `expired_only`。
+- `bilibili_watch` 返回值统一为 `CallToolResult`，与 `bilibili_ask` / `bilibili_transcript` / `bilibili_frame` 一致。
+
+### 测试
+
+- 新增低分辨率采样时间戳测试；
+- 新增过期缓存选择测试；
+- 全部离线测试通过。
+
 ## 0.14.2 (2026-11-10)
 
 按 AstrBot 官方建议优化日志与临时上下文注入。

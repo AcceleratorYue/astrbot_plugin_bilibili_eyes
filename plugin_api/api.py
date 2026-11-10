@@ -289,7 +289,7 @@ class PluginWebApi:
                 pass
             return self._ok(
                 status={
-                    "version": "0.14.2",
+                    "version": "0.14.3",
                     "plugin_name": "astrbot_plugin_bilibili_eyes",
                     "data_dir": str(self._data_dir()),
                     "login": {**login, "account": account},
@@ -467,7 +467,7 @@ class PluginWebApi:
             last = videos[0] if videos else None
             return self._ok(
                 overview={
-                    "version": "0.14.2",
+                    "version": "0.14.3",
                     "enabled": self.plugin._bool_opt("enabled"),
                     "video_mode": self.plugin._video_mode(),
                     "last_video": last,
@@ -656,6 +656,27 @@ class PluginWebApi:
 
     # -- POST --------------------------------------------------------
 
+    @staticmethod
+    def _expired_file(path: Path, ttl_seconds: float, fields: tuple[str, ...]) -> bool:
+        if ttl_seconds <= 0:
+            return False
+        stamp = 0.0
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            for field in fields:
+                try:
+                    stamp = max(stamp, float(payload.get(field) or 0))
+                except Exception:
+                    continue
+        except Exception:
+            stamp = 0.0
+        if stamp <= 0:
+            try:
+                stamp = path.stat().st_mtime
+            except OSError:
+                return False
+        return time.time() - stamp > ttl_seconds
+
     async def cache_cleanup(self):
         try:
             payload = await request.get_json() or {}
@@ -666,24 +687,38 @@ class PluginWebApi:
         kind = str(payload.get("kind") or "all").strip()
         bvid = str(payload.get("bvid") or "").strip()
         page = self._int(payload.get("page", 0), 0, 0, 9999)
-        expired_only = bool(payload.get("expired_only", False))
+        expired_only = payload.get("expired_only", False) in (
+            True,
+            1,
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         if kind not in {"notes", "transcripts", "frames", "all"}:
             return self._error("不支持的缓存类型")
         if bvid and not bvid.upper().startswith("BV"):
             return self._error("bvid 格式不正确")
         active = getattr(self.plugin, "_active", {}) or {}
-        if kind in {"frames", "all"} and active:
+        if kind in {"frames", "all"} and active and not expired_only:
             return self._error("有视频正在处理中，暂不能清理帧缓存；请等任务结束后再试")
         removed = {"notes": 0, "transcripts": 0, "frames": 0}
+        skipped = {"notes": 0, "transcripts": 0, "frames": 0}
         try:
             if kind in {"notes", "all"}:
                 cache = getattr(self.plugin, "_cache", None)
                 directory = getattr(cache, "directory", None)
+                ttl = float(getattr(cache, "ttl_seconds", 0) or 0)
                 if directory and Path(directory).exists():
                     pattern = f"{bvid}_p{page}*.json" if bvid and page else (
                         f"{bvid}_p*.json" if bvid else "*.json"
                     )
                     for path in Path(directory).glob(pattern):
+                        if expired_only and not self._expired_file(
+                            path, ttl, ("created",)
+                        ):
+                            skipped["notes"] += 1
+                            continue
                         try:
                             path.unlink()
                             removed["notes"] += 1
@@ -691,14 +726,22 @@ class PluginWebApi:
                             pass
             if kind in {"transcripts", "all"}:
                 try:
-                    directory = self.plugin._transcript_store().directory
+                    store = self.plugin._transcript_store()
+                    directory = store.directory
+                    ttl = float(getattr(store, "ttl_seconds", 0) or 0)
                 except Exception:
                     directory = None
+                    ttl = 0.0
                 if directory and Path(directory).exists():
                     pattern = f"{bvid}_p{page}.json" if bvid and page else (
                         f"{bvid}_p*.json" if bvid else "*.json"
                     )
                     for path in Path(directory).glob(pattern):
+                        if expired_only and not self._expired_file(
+                            path, ttl, ("updated", "created")
+                        ):
+                            skipped["transcripts"] += 1
+                            continue
                         try:
                             path.unlink()
                             removed["transcripts"] += 1
@@ -706,20 +749,29 @@ class PluginWebApi:
                             pass
             if kind in {"frames", "all"}:
                 frames_dir = self._data_dir() / "frames"
-                targets = [frames_dir / bvid] if bvid else list(frames_dir.glob("*"))
-                for target in targets:
-                    if not target.exists():
-                        continue
-                    if not target.resolve().is_relative_to(frames_dir.resolve()):
-                        continue
-                    files = list(target.rglob("*")) if target.is_dir() else [target]
-                    for path in files:
-                        if path.is_file():
-                            try:
-                                path.unlink()
-                                removed["frames"] += 1
-                            except OSError:
-                                pass
-            return self._ok(removed=removed)
+                if expired_only:
+                    # 帧目录没有 TTL 元数据；只清过期时不动帧缓存。
+                    skipped["frames"] = len(list(frames_dir.glob("*"))) if frames_dir.exists() else 0
+                else:
+                    targets = [frames_dir / bvid] if bvid else list(frames_dir.glob("*"))
+                    for target in targets:
+                        if not target.exists():
+                            continue
+                        if not target.resolve().is_relative_to(frames_dir.resolve()):
+                            continue
+                        files = list(target.rglob("*")) if target.is_dir() else [target]
+                        for path in files:
+                            if path.is_file():
+                                try:
+                                    path.unlink()
+                                    removed["frames"] += 1
+                                except OSError:
+                                    pass
+            return self._ok(
+                removed=removed,
+                skipped=skipped,
+                expired_only=expired_only,
+            )
         except Exception as exc:
             return self._error(f"清理缓存失败：{type(exc).__name__}", 500)
+

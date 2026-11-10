@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 import tempfile
+import time
 from array import array
 from pathlib import Path
 from types import SimpleNamespace
@@ -1338,6 +1339,62 @@ def test_extra_content_injection() -> None:
     print("✅ 临时上下文：TextPart mark_as_temp / 不改 req.prompt")
 
 
+def test_lowres_frame_timestamps() -> None:
+    """iter_lowres_frames 不能引用 iter_subtitle_frames 的 step 参数。"""
+
+    import io
+
+    frame_size = 2 * 2 * 3
+    frames = [bytes([i]) * frame_size for i in range(3)]
+
+    class FakeStdout(io.BytesIO):
+        pass
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = FakeStdout(b"".join(frames))
+            self.terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+    client = object.__new__(bc.BiliClient)
+    client._ffmpeg_exe = lambda: "ffmpeg"
+    client.http = SimpleNamespace(_headers={"User-Agent": "test"})
+    original = bc.subprocess.Popen
+    bc.subprocess.Popen = lambda *args, **kwargs: FakeProcess()
+    try:
+        stamps = [stamp for stamp, _raw in client.iter_lowres_frames(
+            "https://example.invalid/v", fps=2, max_seconds=10, width=2, height=2
+        )]
+    finally:
+        bc.subprocess.Popen = original
+    assert stamps == [0.0, 0.5, 1.0]
+    print("✅ 增强/极致低分辨率采样：时间戳不再引用未定义 step")
+
+
+def test_expired_cache_selector() -> None:
+    from plugin_api import PluginWebApi
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        old = root / "old.json"
+        fresh = root / "fresh.json"
+        old.write_text(
+            json.dumps({"created": time.time() - 120}), encoding="utf-8"
+        )
+        fresh.write_text(json.dumps({"created": time.time()}), encoding="utf-8")
+        assert PluginWebApi._expired_file(old, 60, ("created",)) is True
+        assert PluginWebApi._expired_file(fresh, 60, ("created",)) is False
+    print("✅ 缓存清理：expired_only 真正按 TTL 判断")
+
+
 def test_web_api_registration_and_cache_listing() -> None:
     from plugin_api import PluginWebApi
 
@@ -1445,7 +1502,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.14.2" in meta
+    assert "version: 0.14.3" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1506,6 +1563,8 @@ def main() -> int:
     test_transcript_direct_read()
     test_config_grouping()
     test_web_api_registration_and_cache_listing()
+    test_lowres_frame_timestamps()
+    test_expired_cache_selector()
     test_extra_content_injection()
     test_auth_and_settings_spec()
     test_schema()
