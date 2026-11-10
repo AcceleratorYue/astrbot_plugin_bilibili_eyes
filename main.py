@@ -2783,10 +2783,12 @@ class BilibiliEyesPlugin(Star):
         if bvid:
             refs = bc.extract_video_refs(str(bvid))
             wanted = (refs[0] if refs else str(bvid)).strip().upper()
-        current = str(session.get("bvid") or "").strip().upper()
+        raw_current = str(session.get("bvid") or "").strip()
+        current = raw_current.upper()
         if wanted and current and wanted not in current and current not in wanted:
             return None, f"最近看的是 {current}，不是 {wanted}；请先看目标视频。"
-        target = wanted or current
+        # 文件系统在 Linux/CI 区分大小写，必须保留会话里的真实 BV 大小写。
+        target = raw_current or wanted
         page = int(session.get("page") or 1)
         if not target:
             return None, "最近没有看过的视频；请先让我看一个视频再查原文。"
@@ -2796,7 +2798,7 @@ class BilibiliEyesPlugin(Star):
             hit = None
         if hit:
             material = hit[0]
-            if str(getattr(material.video, "bvid", "")) == target:
+            if str(getattr(material.video, "bvid", "")).upper() == target.upper():
                 doc = et.doc_from_material(material)
                 if doc.get("official") or doc.get("asr"):
                     return doc, ""
