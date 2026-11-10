@@ -1,5 +1,7 @@
 # B站之眼 · astrbot_plugin_bilibili_eyes
 
+[![CI](https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/actions/workflows/ci.yml/badge.svg)](https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/actions/workflows/ci.yml)
+
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
 > 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.14.4>
 > License：MIT
