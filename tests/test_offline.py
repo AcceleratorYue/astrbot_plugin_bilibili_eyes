@@ -1208,8 +1208,8 @@ def test_transcript_direct_read() -> None:
         assert loaded and loaded["official"] and loaded["asr"]
         result = et.search(loaded, query="钱包", max_lines=10)
         text = et.format_result(loaded, result)
-        assert "官方字幕" in text and "ASR（约）" in text
-        assert "本体已经接入用户钱包" in text
+        assert "官方字幕" in text and "ASR（约）" in text, text
+        assert "本体已经接入用户钱包" in text, text
 
         video = bc.VideoInfo(
             bvid="BV1read",
@@ -1246,8 +1246,8 @@ def test_transcript_direct_read() -> None:
             plugin.tool_transcript(event, query="钱包", max_lines="5")
         )
         text = answer.content[0].text
-        assert "官方字幕" in text and "ASR（约）" in text
-        assert "本体已经接入用户钱包" in text
+        assert "官方字幕" in text and "ASR（约）" in text, text
+        assert "本体已经接入用户钱包" in text, text
 
         # 内存材料清掉后，仍能从磁盘原文缓存读取。
         plugin._materials.drop(event.unified_msg_origin)
