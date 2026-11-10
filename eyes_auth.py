@@ -20,12 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-try:  # AstrBot 运行时
-    from astrbot.api import logger
-except Exception:  # pragma: no cover
-    import logging
-
-    logger = logging.getLogger("bilibili_eyes")
+from astrbot.api import logger
 
 QR_GENERATE_URL = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
 QR_POLL_URL = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"

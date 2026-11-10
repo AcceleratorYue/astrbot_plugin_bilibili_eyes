@@ -402,7 +402,7 @@ class BilibiliEyesPlugin(Star):
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
         self._account_cache: tuple[float, dict] | None = None
-        logger.info(f"{LOG} 插件 v0.14.1 已加载")
+        logger.info(f"{LOG} 插件 v0.14.2 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -863,9 +863,35 @@ class BilibiliEyesPlugin(Star):
             )
         return section
 
+    def _inject_context_part(self, req, section: str) -> None:
+        """按官方推荐把临时上下文挂到 extra_user_content_parts。
+
+        使用 ``TextPart(...).mark_as_temp()``：
+        - 只对本次 provider 请求可见；
+        - 不写入会话历史；
+        - 不修改 req.prompt 前缀。
+        """
+
+        text = str(section or "").strip()
+        if not text:
+            return
+        try:
+            from astrbot.core.agent.message import TextPart
+
+            parts = getattr(req, "extra_user_content_parts", None)
+            if parts is None:
+                parts = []
+                req.extra_user_content_parts = parts
+            parts.append(TextPart(text=text).mark_as_temp())
+        except Exception as exc:
+            # 兼容旧版 AstrBot：没有 extra 字段时退回原行为。
+            logger.warning(f"{LOG} 临时上下文注入失败，回退 req.prompt：{exc}")
+            prompt = (getattr(req, "prompt", None) or "").strip()
+            req.prompt = text + ("\n\n" + prompt if prompt else "")
+
     @filter.on_llm_request(priority=900)
     async def on_llm_request(self, event: AstrMessageEvent, req):
-        """在主模型请求发出前，把「观看笔记」注入 req.prompt。"""
+        """在主模型请求发出前，把「观看笔记」作为临时 extra content 注入。"""
 
         umo = event.unified_msg_origin
         pending = self._pending.get(umo)
@@ -884,9 +910,8 @@ class BilibiliEyesPlugin(Star):
         if not pending:
             section = self._followup_section(event)
             if section:
-                note = (req.prompt or "").strip()
-                req.prompt = section + ("\n\n" + note if note else "")
-                logger.info(f"{LOG} 追问注入：umo={umo}")
+                self._inject_context_part(req, section)
+                logger.info(f"{LOG} 追问注入：umo={umo}（extra_user_content_parts）")
             return
         job = Job(
             started=time.monotonic(),
@@ -911,8 +936,7 @@ class BilibiliEyesPlugin(Star):
                     section = await asyncio.wait_for(
                         self._prepare_up(event, pending, job), timeout=timeout
                     )
-            note = (req.prompt or "").strip()
-            req.prompt = section + ("\n\n" + note if note else "")
+            self._inject_context_part(req, section)
         except asyncio.TimeoutError:
             logger.info(f"{LOG} 观看超时：kind={pending.get('kind')}")
             section = sa.build_main_model_prompt(
@@ -921,7 +945,7 @@ class BilibiliEyesPlugin(Star):
                 sa.failure_status("timeout"),
                 template=str(self._opt("main_model_prompt_template") or ""),
             )
-            req.prompt = section + ("\n\n" + (req.prompt or ""))
+            self._inject_context_part(req, section)
         except bc.BiliError as exc:
             logger.info(f"{LOG} 观看失败：{exc.reason} {exc.detail}")
             section = sa.build_main_model_prompt(
@@ -930,7 +954,7 @@ class BilibiliEyesPlugin(Star):
                 sa.failure_status(exc.reason),
                 template=str(self._opt("main_model_prompt_template") or ""),
             )
-            req.prompt = section + ("\n\n" + (req.prompt or ""))
+            self._inject_context_part(req, section)
         except Exception as exc:
             logger.warning(f"{LOG} 观看异常：{exc}")
             section = sa.build_main_model_prompt(
@@ -939,7 +963,7 @@ class BilibiliEyesPlugin(Star):
                 sa.failure_status("network"),
                 template=str(self._opt("main_model_prompt_template") or ""),
             )
-            req.prompt = section + ("\n\n" + (req.prompt or ""))
+            self._inject_context_part(req, section)
         finally:
             self._active.pop(umo, None)
 

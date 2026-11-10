@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.14.2 (2026-11-10)
+
+按 AstrBot 官方建议优化日志与临时上下文注入。
+
+### 日志
+
+- `eyes_auth.py` 移除 `logging.getLogger` 兜底；
+- 统一使用 `astrbot.api.logger`。
+
+### 笔记注入
+
+- `on_llm_request` 不再改写 `req.prompt` 前缀；
+- 改用 `req.extra_user_content_parts.append(TextPart(...).mark_as_temp())`；
+- 临时上下文只对当前 provider 请求可见，不写入会话历史；
+- 保留旧版 AstrBot 的异常回退路径；
+- 新增 `mark_as_temp` 注入测试。
+
 ## 0.14.1 (2026-11-10)
 
 为没有 CUDA 的 AMD / Intel 核显增加 DirectML OCR 加速兼容。

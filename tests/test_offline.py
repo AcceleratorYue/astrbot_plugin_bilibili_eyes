@@ -1323,6 +1323,21 @@ def test_auth_and_settings_spec() -> None:
     print("✅ WebUI：扫码凭据管理 / 设置字段规格")
 
 
+def test_extra_content_injection() -> None:
+    import main as plugin_main
+
+    plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+    req = SimpleNamespace(prompt="用户原问题", extra_user_content_parts=[])
+    plugin._inject_context_part(req, "<video_observation>笔记</video_observation>")
+    assert req.prompt == "用户原问题"
+    assert len(req.extra_user_content_parts) == 1
+    part = req.extra_user_content_parts[0]
+    assert part.type == "text"
+    assert "笔记" in part.text
+    assert getattr(part, "_no_save", False) is True
+    print("✅ 临时上下文：TextPart mark_as_temp / 不改 req.prompt")
+
+
 def test_web_api_registration_and_cache_listing() -> None:
     from plugin_api import PluginWebApi
 
@@ -1430,7 +1445,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.14.1" in meta
+    assert "version: 0.14.2" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1491,6 +1506,7 @@ def main() -> int:
     test_transcript_direct_read()
     test_config_grouping()
     test_web_api_registration_and_cache_listing()
+    test_extra_content_injection()
     test_auth_and_settings_spec()
     test_schema()
     print("\n全部离线测试通过")
