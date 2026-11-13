@@ -1324,6 +1324,41 @@ def test_auth_and_settings_spec() -> None:
     print("✅ WebUI：扫码凭据管理 / 设置字段规格")
 
 
+def test_bilibili_up_tool() -> None:
+    import main as plugin_main
+
+    plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+    plugin._config = {**plugin_main.DEFAULT_OPTIONS, "enabled": True}
+    plugin._session_materials = {}
+    plugin._active = {}
+    plugin._quota = {}
+    plugin._semaphore = asyncio.Semaphore(1)
+
+    async def fake_resolve(event, query):
+        return bc.UpInfo(
+            uid=123,
+            name="测试UP",
+            sign="这是签名",
+            level=6,
+            fans=1000,
+            archives=["投稿一", "投稿二"],
+            archive_count=2,
+        )
+
+    plugin._resolve_up = fake_resolve
+    event = SimpleNamespace(
+        unified_msg_origin="test:GroupMessage:up",
+        get_group_id=lambda: "",
+        get_sender_id=lambda: "u1",
+    )
+    result = asyncio.run(plugin.tool_up(event, "测试UP"))
+    text = result.content[0].text
+    assert "测试UP" in text and "<up_profile>" in text and "投稿一" in text
+    assert plugin._session_materials[event.unified_msg_origin]["kind"] == "up"
+    assert "bilibili_up" in plugin_main.TOOL_NAMES
+    print("✅ UP 工具：模型可调用 / 主页材料 / 追问缓存")
+
+
 def test_extra_content_injection() -> None:
     import main as plugin_main
 
@@ -1502,7 +1537,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.14.5" in meta
+    assert "version: 0.15.0" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1566,6 +1601,7 @@ def main() -> int:
     test_lowres_frame_timestamps()
     test_expired_cache_selector()
     test_extra_content_injection()
+    test_bilibili_up_tool()
     test_auth_and_settings_spec()
     test_schema()
     print("\n全部离线测试通过")

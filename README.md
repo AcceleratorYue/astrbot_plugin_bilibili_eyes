@@ -3,7 +3,7 @@
 [![CI](https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/actions/workflows/ci.yml/badge.svg)](https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/actions/workflows/ci.yml)
 
 > GitHub：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes>
-> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.14.5>
+> 最新 Release：<https://github.com/AcceleratorYue/astrbot_plugin_bilibili_eyes/releases/tag/v0.15.0>
 > License：MIT
 
 让主模型「看」B 站内容：**子代理（眼睛）在隔离上下文里看视频并整理客观笔记，主模型（脑子）拿笔记后用自己的判断和语气回复**。
@@ -14,7 +14,7 @@
 > 未配置时：没有字幕、评论只有少量、UP 主页和近期投稿经常被风控、视频/主页查询也可能失败。
 > 获取方法见下方「SESSDATA 怎么获取」。
 
-## 当前版本 v0.14.5
+## 当前版本 v0.15.0
 
 - 三种读取模式：普通、增强、**极致模式**；
   - 普通/增强的固定帧数与固定笔记预算保持不变；
@@ -23,7 +23,7 @@
 - 笔记拆成“核心内容 + 其他客观内容”，评论区原文不再被简单删减：
   - 普通：核心 2000 + 其他 1000；
   - 增强：核心 4500 + 其他 1500；
-  - 极致：核心 1500-9000 + 其他 800-3500，按视频体量动态计算；
+  - 极致：核心 1500~9000 + 其他 800~3500，按视频体量动态计算；
 - 新增 `bilibili_transcript`：主模型可直接查询官方字幕/ASR 原文，不再经过子代理；
 - 原文缓存独立落盘，内存材料过期/重启后仍可回查；
 - 极致模式补齐像素预算布局、场景权重、候选帧质量、超预算二次压缩；
@@ -40,14 +40,14 @@
 | --- | --- |
 | 自然语言 | 仅支持视频：@bot 且消息含 B 站视频链接或 B 站小程序卡片即触发；**UP 主不支持自然语言** |
 | 指令 | `/看视频 <链接/BV>`、`/看主页 <UID/链接/用户名>`、`/bili状态`（检查 SESSDATA 与当前 UID） |
-| 工具 | `bilibili_watch`（看视频）、`bilibili_ask`（追问）、`bilibili_transcript`（查原文）、`bilibili_frame`（截图）；UP 仅限 `/看主页` 指令 |
+| 工具 | `bilibili_watch`（看视频）、`bilibili_up`（看UP主页）、`bilibili_ask`（追问）、`bilibili_transcript`（查原文）、`bilibili_frame`（截图） |
 
 `/看主页` 的 UID 支持宽容输入：`2431982`、`uid:2431982`、`uid：2431982`、
 `UID:2431982`、`uid 2431982`、`uid2431982` 都可以，大小写和全/半角冒号不影响。
 
 看完视频后 30 分钟内可以直接追问（例如「置顶评论是啥」「什么时候发布的」），
 插件会自动复用当时的摘要，不需要重新看一遍。需要具体画面时，主模型可调用
-`bilibili_frame` 返回某一帧；追问由 `bilibili_ask` 基于会话材料回答，不会重新抓 B 站。
+`bilibili_frame` 返回某一帧；`bilibili_up` 由模型根据用户是否真的在问 UP 主主页决定是否调用；追问由 `bilibili_ask` 基于会话材料回答，不会重新抓 B 站。
 > `nl_trigger_enabled=false` 时只保留指令（需重载插件）。
 
 ## 三种模式
@@ -416,6 +416,22 @@ bilibili_transcript(query="wallet", lang="en")
 
 支持 `zh / en / ja / ko`；不填则搜索全部字幕轨。WebUI 原文检索页也有语言下拉。
 
+## UP 主主页工具
+
+新增主模型工具：
+
+```text
+bilibili_up(query="UP名 / UID / 空间链接")
+```
+
+和旧的自然语言关键词触发不同：
+
+- 不会因为聊天里出现「UP 主」「主页」等词就强制抓取；
+- 工具描述明确要求模型只在用户确实询问 UP 主资料、粉丝、签名或近期投稿时调用；
+- 视频内容仍交给 `bilibili_watch`；
+- 成功获取后登记为会话材料，后续追问可走 `bilibili_ask`；
+- 候选多个 UP 时返回列表，让模型向用户确认 UID，而不是自行猜测。
+
 ## 内嵌字幕 OCR
 
 有些视频没有 B 站字幕轨，但字幕已经烧进画面。启用内嵌 OCR 后，文本来源优先级为：
@@ -484,7 +500,8 @@ pip install onnxruntime-directml
 - 字幕依赖登录态（`need_login_subtitle`），游客多为无字幕；
 - 游客最高 360P（截帧仍够辨认）；
 - 不做长期记忆（只做插件本地笔记缓存）；
-- 番剧/直播/动态不支持，后续再说。
+- 番剧/直播不支持；动态后续再说；
+- 单次观看约 25~35 秒（12 帧 + 子代理），等待提示用于安抚。
 
 ## 开发测试
 
