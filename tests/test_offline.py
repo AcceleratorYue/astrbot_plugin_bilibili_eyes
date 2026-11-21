@@ -1430,6 +1430,46 @@ def test_expired_cache_selector() -> None:
     print("✅ 缓存清理：expired_only 真正按 TTL 判断")
 
 
+def test_digest_deadline_reserve() -> None:
+    import main as plugin_main
+
+    plugin = object.__new__(plugin_main.BilibiliEyesPlugin)
+    plugin._config = {
+        **plugin_main.DEFAULT_OPTIONS,
+        "video_mode": "normal",
+        "subagent_timeout": 180,
+        "subagent_retries": 1,
+    }
+    plugin._cache = None
+    plugin.context = SimpleNamespace()
+    plugin._vision = lambda event: ("test-provider", False)
+    video = bc.VideoInfo(
+        bvid="BV1budget", aid=1, cid=2, page=1, page_count=1,
+        title="预算测试", up_name="UP", up_uid=1, duration=10, desc="",
+    )
+    material = bc.Material(video=video)
+    job = plugin_main.Job(
+        started=time.monotonic() - 200,
+        stage="测试",
+        bvid="BV1budget",
+    )
+    captured = {}
+
+    async def fake_run_digest(context, provider_id, mat, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        return sa.format_note_bundle("核心内容", "其他内容")
+
+    original = plugin_main.sa.run_digest
+    plugin_main.sa.run_digest = fake_run_digest
+    try:
+        digest = asyncio.run(plugin._digest(material, SimpleNamespace(), job))
+    finally:
+        plugin_main.sa.run_digest = original
+    assert digest and "核心内容" in digest
+    assert captured["timeout"] == 60
+    print("✅ 子代理预算：为工具 300s 硬超时预留余量")
+
+
 def test_web_api_registration_and_cache_listing() -> None:
     from plugin_api import PluginWebApi
 
@@ -1537,7 +1577,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.15.0" in meta
+    assert "version: 0.15.1" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1598,6 +1638,7 @@ def main() -> int:
     test_transcript_direct_read()
     test_config_grouping()
     test_web_api_registration_and_cache_listing()
+    test_digest_deadline_reserve()
     test_lowres_frame_timestamps()
     test_expired_cache_selector()
     test_extra_content_injection()

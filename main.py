@@ -402,7 +402,7 @@ class BilibiliEyesPlugin(Star):
         self.plugin_web_api = PluginWebApi(self)
         self._sessdata_warned: set[str] = set()
         self._account_cache: tuple[float, dict] | None = None
-        logger.info(f"{LOG} 插件 v0.15.0 已加载")
+        logger.info(f"{LOG} 插件 v0.15.1 已加载")
 
     async def initialize(self) -> None:
         self._migrate_grouped_config()
@@ -1620,7 +1620,7 @@ class BilibiliEyesPlugin(Star):
                 return hit[1], hit[2]
             material = await self._collect(job, ref, page, event)
             self._save_transcript(material)
-            digest = await self._digest(material, event)
+            digest = await self._digest(material, event, job)
             self._video_results[key] = (time.monotonic(), material, digest)
             self._prune_video_results()
             return material, digest
@@ -2134,7 +2134,9 @@ class BilibiliEyesPlugin(Star):
             material.warnings.append(f"弹幕统计不可用：{exc}")
         return material
 
-    async def _digest(self, material: bc.Material, event) -> str | None:
+    async def _digest(
+        self, material: bc.Material, event, job: Job | None = None
+    ) -> str | None:
         if material.cached_digest:
             return material.cached_digest
         provider_id, visual = self._vision(event)
@@ -2171,22 +2173,37 @@ class BilibiliEyesPlugin(Star):
                     else "digest_other_max_chars",
                     1500 if enhanced else 1000,
                 )
+            configured_timeout = self._int_opt(
+                "extreme_subagent_timeout"
+                if extreme
+                else (
+                    "enhanced_subagent_timeout"
+                    if enhanced
+                    else "subagent_timeout"
+                ),
+                300 if (enhanced or extreme) else 180,
+            )
+            timeout = configured_timeout
+            if job is not None:
+                # AstrBot 本地工具硬超时 300s；给取流/取帧/收尾留余量，
+                # 避免子代理超时等于工具超时，导致 fallback 根本没机会执行。
+                elapsed = time.monotonic() - float(job.started)
+                timeout = min(
+                    configured_timeout,
+                    max(30, int(285 - elapsed - 25)),
+                )
+                if timeout < configured_timeout:
+                    logger.info(
+                        f"{LOG} 子代理预算压缩：{configured_timeout}s → {timeout}s "
+                        f"(已用 {elapsed:.0f}s)"
+                    )
             digest = await sa.run_digest(
                 self.context,
                 provider_id,
                 material,
                 max_chars=core_max,
                 other_max_chars=other_max,
-                timeout=self._int_opt(
-                    "extreme_subagent_timeout"
-                    if extreme
-                    else (
-                        "enhanced_subagent_timeout"
-                        if enhanced
-                        else "subagent_timeout"
-                    ),
-                    300 if (enhanced or extreme) else 180,
-                ),
+                timeout=timeout,
                 retries=self._int_opt("subagent_retries", 1),
                 visual=visual,
                 system_prompt=str(self._opt("subagent_system_prompt") or "").strip(),
@@ -2213,6 +2230,14 @@ class BilibiliEyesPlugin(Star):
                         f"核心 {len(raw_core)}→{core_max}，"
                         f"其他 {len(raw_other)}→{other_max}"
                     )
+                    compress_timeout = max(
+                        30, self._int_opt("extreme_subagent_timeout", 300)
+                    )
+                    if job is not None:
+                        compress_timeout = min(
+                            compress_timeout,
+                            max(30, int(285 - (time.monotonic() - job.started) - 25)),
+                        )
                     digest = await sa.compress_digest(
                         self.context,
                         provider_id,
@@ -2220,7 +2245,7 @@ class BilibiliEyesPlugin(Star):
                         raw_other,
                         core_max,
                         other_max,
-                        timeout=max(30, self._int_opt("extreme_subagent_timeout", 300)),
+                        timeout=compress_timeout,
                         retries=self._int_opt("subagent_retries", 1),
                     )
             if self._cache is not None:
