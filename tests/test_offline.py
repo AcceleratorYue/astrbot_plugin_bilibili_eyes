@@ -1470,6 +1470,34 @@ def test_digest_deadline_reserve() -> None:
     print("✅ 子代理预算：为工具 300s 硬超时预留余量")
 
 
+def test_video_map_transcript_fallback() -> None:
+    from plugin_api import PluginWebApi
+
+    api = PluginWebApi(SimpleNamespace())
+    api._notes = lambda limit=500: []
+    api._transcripts = lambda limit=500: [
+        {
+            "bvid": "BV1fallback",
+            "page": 1,
+            "title": "仅原文测试",
+            "created": 1234.0,
+            "official_count": 47,
+            "asr_count": 0,
+            "official_status": "available",
+            "asr_status": "skipped",
+            "origins": ["ai"],
+            "languages": ["中文"],
+            "track_count": 1,
+        }
+    ]
+    rows = api._video_map()
+    assert rows and rows[0]["note_available"] is False
+    assert rows[0]["transcript_available"] is True
+    assert rows[0]["mode"] == "仅原文"
+    assert rows[0]["text_origin"] == "ai"
+    print("✅ 视频列表：笔记失败时从原文兜底来源/状态")
+
+
 def test_web_api_registration_and_cache_listing() -> None:
     from plugin_api import PluginWebApi
 
@@ -1577,7 +1605,7 @@ def test_schema() -> None:
     meta = (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
     assert "name: astrbot_plugin_bilibili_eyes" in meta
     assert "display_name: B站之眼" in meta
-    assert "version: 0.15.1" in meta
+    assert "version: 0.15.2" in meta
     print("✅ 配置 schema / metadata")
 
 
@@ -1638,6 +1666,7 @@ def main() -> int:
     test_transcript_direct_read()
     test_config_grouping()
     test_web_api_registration_and_cache_listing()
+    test_video_map_transcript_fallback()
     test_digest_deadline_reserve()
     test_lowres_frame_timestamps()
     test_expired_cache_selector()

@@ -173,14 +173,30 @@ class PluginWebApi:
                 float(note.get("created") or 0),
                 float(transcript.get("created") or 0),
             )
+            # 笔记生成失败时，原文缓存仍代表一次真实抓取。
+            # 用 transcript track origin 兜底来源，避免列表显示“来源 —”。
+            origins = [str(item) for item in (transcript.get("origins") or [])]
+            origin = str(meta.get("text_origin") or "").strip()
+            if not origin:
+                for candidate in ("ai", "official", "ocr", "asr"):
+                    if candidate in origins:
+                        origin = candidate
+                        break
+            has_note = bool(note)
+            has_transcript = bool(transcript)
+            mode = str(meta.get("mode") or "").strip()
+            if not mode and has_transcript:
+                mode = "仅原文"
             rows.append(
                 {
                     "bvid": bvid,
                     "page": page,
                     "title": meta.get("title") or transcript.get("title") or "",
-                    "mode": meta.get("mode") or "",
+                    "mode": mode,
                     "created": created,
-                    "note": bool(note),
+                    "note": has_note,
+                    "note_available": has_note,
+                    "transcript_available": has_transcript,
                     "official_status": meta.get("official_status")
                     or transcript.get("official_status")
                     or "unknown",
@@ -190,8 +206,9 @@ class PluginWebApi:
                     "official_count": transcript.get("official_count", 0),
                     "asr_count": transcript.get("asr_count", 0),
                     "languages": transcript.get("languages", []),
+                    "origins": origins,
                     "track_count": transcript.get("track_count", 0),
-                    "text_origin": meta.get("text_origin", ""),
+                    "text_origin": origin,
                     "ocr_status": meta.get("ocr_status", ""),
                     "frames": int(meta.get("frames") or 0),
                     "core_chars": int(meta.get("core_chars") or 0),
@@ -290,7 +307,7 @@ class PluginWebApi:
                 pass
             return self._ok(
                 status={
-                    "version": "0.15.1",
+                    "version": "0.15.2",
                     "plugin_name": "astrbot_plugin_bilibili_eyes",
                     "data_dir": str(self._data_dir()),
                     "login": {**login, "account": account},
@@ -468,7 +485,7 @@ class PluginWebApi:
             last = videos[0] if videos else None
             return self._ok(
                 overview={
-                    "version": "0.15.1",
+                    "version": "0.15.2",
                     "enabled": self.plugin._bool_opt("enabled"),
                     "video_mode": self.plugin._video_mode(),
                     "last_video": last,

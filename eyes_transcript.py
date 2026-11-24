@@ -286,6 +286,10 @@ class TranscriptStore:
                     "official_status": str(payload.get("official_status") or ""),
                     "asr_status": str(payload.get("asr_status") or ""),
                     "track_count": len(_doc_tracks(payload)),
+                    "origins": [
+                        str(track.get("origin") or "official")
+                        for track in _doc_tracks(payload)
+                    ],
                     "languages": [
                         str(track.get("lang_doc") or track.get("lang") or "")
                         for track in _doc_tracks(payload)
