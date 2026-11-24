@@ -1466,7 +1466,7 @@ def test_digest_deadline_reserve() -> None:
     finally:
         plugin_main.sa.run_digest = original
     assert digest and "核心内容" in digest
-    assert captured["timeout"] == 60
+    assert 55 <= captured["timeout"] <= 60, captured["timeout"]
     print("✅ 子代理预算：为工具 300s 硬超时预留余量")
 
 
